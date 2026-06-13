@@ -12,10 +12,12 @@ async function req(method, url, body, headers = {}) {
 }
 
 export const api = {
-  ocr: (image) => req('POST', '/api/ocr', { image }),
-
-  createTab: (payload) => req('POST', '/api/tabs', payload),
+  createTab: (creatorVenmo) => req('POST', '/api/tabs', { creatorVenmo }),
   getTab: (id) => req('GET', `/api/tabs/${id}`),
+  scan: (id, image, creatorToken) =>
+    req('POST', `/api/tabs/${id}/scan`, { image }, { 'x-creator-token': creatorToken }),
+  removeItem: (id, itemId, creatorToken) =>
+    req('DELETE', `/api/tabs/${id}/items/${itemId}`, null, { 'x-creator-token': creatorToken }),
   updateExtras: (id, { tax, tip }, creatorToken) =>
     req('PATCH', `/api/tabs/${id}`, { tax, tip }, { 'x-creator-token': creatorToken }),
 
@@ -28,14 +30,27 @@ export const api = {
 
 // ---- localStorage helpers --------------------------------------------------
 
+import { normalizeVenmo } from './lib/venmo.js'
+
 const VENMO_KEY = 'splitdumb:venmo'
+const creatorKey = (tabId) => `splitdumb:tab:${tabId}:creator`
+const meKey = (tabId) => `splitdumb:tab:${tabId}:me`
+
 export const getMyVenmo = () => localStorage.getItem(VENMO_KEY) || ''
-export const setMyVenmo = (v) => localStorage.setItem(VENMO_KEY, String(v).replace(/^@/, '').trim())
+export const setMyVenmo = (v) => localStorage.setItem(VENMO_KEY, normalizeVenmo(v))
 
-export const getCreatorToken = (tabId) => localStorage.getItem(`splitdumb:tab:${tabId}:creator`) || ''
-export const setCreatorToken = (tabId, token) =>
-  localStorage.setItem(`splitdumb:tab:${tabId}:creator`, token)
+export const getCreatorToken = (tabId) => localStorage.getItem(creatorKey(tabId)) || ''
+export const setCreatorToken = (tabId, token) => localStorage.setItem(creatorKey(tabId), token)
 
-export const getMyParticipantId = (tabId) => localStorage.getItem(`splitdumb:tab:${tabId}:me`) || ''
-export const setMyParticipantId = (tabId, pid) =>
-  localStorage.setItem(`splitdumb:tab:${tabId}:me`, pid)
+export const getMyParticipantId = (tabId) => localStorage.getItem(meKey(tabId)) || ''
+export const setMyParticipantId = (tabId, pid) => localStorage.setItem(meKey(tabId), pid)
+
+// Tab ids this device created (i.e. has a creator token stored for).
+export function listCreatedTabIds() {
+  const ids = []
+  for (let i = 0; i < localStorage.length; i++) {
+    const m = localStorage.key(i)?.match(/^splitdumb:tab:(.+):creator$/)
+    if (m) ids.push(m[1])
+  }
+  return ids
+}

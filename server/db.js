@@ -68,6 +68,9 @@ export const q = {
     VALUES (@id, @tab_id, @name, @price, @position)
   `),
   getItems: db.prepare(`SELECT * FROM items WHERE tab_id = ? ORDER BY position, rowid`),
+  countItems: db.prepare(`SELECT COUNT(*) AS n FROM items WHERE tab_id = ?`),
+  deleteItem: db.prepare(`DELETE FROM items WHERE id = ? AND tab_id = ?`),
+  setMeta: db.prepare(`UPDATE tabs SET merchant = @merchant, currency = @currency WHERE id = @id`),
 
   insertParticipant: db.prepare(`
     INSERT INTO participants (id, tab_id, name, venmo, paid, confirmed, created_at)
@@ -79,6 +82,10 @@ export const q = {
   setConfirmed: db.prepare(`UPDATE participants SET confirmed = @confirmed WHERE id = @id AND tab_id = @tab_id`),
 
   getClaims: db.prepare(`SELECT * FROM claims WHERE tab_id = ?`),
+  sumOtherShares: db.prepare(`
+    SELECT COALESCE(SUM(share), 0) AS s FROM claims
+    WHERE item_id = ? AND participant_id != ?
+  `),
   upsertClaim: db.prepare(`
     INSERT INTO claims (id, tab_id, item_id, participant_id, share)
     VALUES (@id, @tab_id, @item_id, @participant_id, @share)

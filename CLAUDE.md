@@ -5,9 +5,13 @@ A dead-simple, account-free bill splitter (think Splitwise without the accounts)
 ## What it does
 
 1. You enter your Venmo handle once — saved to `localStorage`.
-2. You snap a photo of a receipt → it's OCR'd into line items + tax/tip.
-3. A tab is created with a short shareable URL + QR code.
-4. Anyone scans the QR, enters their name, and claims items (fully or partially).
+2. "Start a tab" creates an empty tab (short shareable URL + QR code).
+3. You snap a photo of a receipt → it's OCR'd into line items + tax/tip, which
+   are added to the tab. **Items can only come from a receipt scan — there is no
+   manual item entry.** You can scan more receipts to append, or remove a
+   mis-scanned line. Tax/tip stay editable.
+4. Anyone scans the QR, enters their name, and claims items (fully or partially —
+   you can only claim the portion of an item that's still unclaimed).
 5. Each person sees what they owe (their items + proportional tax/tip), taps a
    prefilled Venmo link to pay, then marks themselves paid.
 6. The creator confirms each payment was actually received.
@@ -36,10 +40,15 @@ server/
   db.js      SQLite schema + prepared statements
   ocr.js     OpenRouter vision call → structured receipt JSON
 src/
-  pages/     Home, CreateTab, TabView
-  lib/       calc.js (who-owes-what math), venmo.js (pay links)
-  api.js     thin fetch wrapper
+  pages/     Home (enter venmo, start/list tabs), TabView (everything else)
+  lib/       calc.js (who-owes-what math), venmo.js (pay links + normalize),
+             image.js (downscale photo before OCR)
+  api.js     thin fetch wrapper + localStorage helpers
 ```
+
+OCR is **tied to a tab**: `POST /api/tabs/:id/scan` requires the creator token
+and is rate-limited (in-memory, per-IP and per-tab) so the paid OpenRouter key
+can't be drained. There is no standalone unauthenticated OCR endpoint.
 
 ## Money math (see `src/lib/calc.js`)
 

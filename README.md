@@ -6,12 +6,15 @@ claims their items (fully or partially) and Venmos the host.
 ## How it works
 
 1. Open the site, type your **Venmo handle** (saved to this device's localStorage).
-2. **Scan a receipt** — GPT-5.4-mini (via OpenRouter) reads it into line items +
-   tax/tip. If the photo's no good, it tells you why. You can also add items by hand.
-3. Add a **tip** if the receipt didn't include one — it's split proportionally.
-4. You get a **tab with a short URL + QR code**.
-5. Anyone scans, enters their name, and **claims items** — quick fractions (¼, ⅓,
-   ½, All) or any custom %. Tax & tip are split by what each person ordered.
+2. **Start a tab** — you get a short URL + QR code.
+3. **Scan a receipt** — GPT-5.4-mini (via OpenRouter) reads it into line items +
+   tax/tip and adds them to the tab. If the photo's no good, it tells you why.
+   Items come *only* from receipt scans (no manual entry); scan more to append,
+   or remove a mis-read line.
+4. Add a **tip** if the receipt didn't include one — it's split proportionally.
+5. Anyone scans the QR, enters their name, and **claims items** — quick fractions
+   (¼, ⅓, ½, Rest) or any custom %, capped at what's still unclaimed. Tax & tip
+   are split by what each person ordered.
 6. Each person taps a **prefilled Venmo link** to pay the host, then marks paid.
 7. The **host confirms** each payment actually landed.
 

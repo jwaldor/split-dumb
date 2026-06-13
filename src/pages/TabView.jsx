@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   api,
@@ -8,15 +8,15 @@ import {
   getMyParticipantId,
   setMyParticipantId,
 } from '../api.js'
-import { computeTotals, money } from '../lib/calc.js'
+import { computeTotals, money, round } from '../lib/calc.js'
 import { venmoPayLink } from '../lib/venmo.js'
+import { fileToDataUrl } from '../lib/image.js'
 import QrCode from '../components/QrCode.jsx'
 
 const FRACTIONS = [
   { label: '¼', value: 0.25 },
   { label: '⅓', value: 1 / 3 },
   { label: '½', value: 0.5 },
-  { label: 'All', value: 1 },
 ]
 
 export default function TabView() {
@@ -25,14 +25,28 @@ export default function TabView() {
   const [tab, setTab] = useState(null)
   const [error, setError] = useState(null)
   const [showShare, setShowShare] = useState(false)
+  const [scanning, setScanning] = useState(false)
+  const [scanIssue, setScanIssue] = useState(null)
+  const fileRef = useRef(null)
 
   const creatorToken = getCreatorToken(id)
   const isCreator = !!creatorToken
   const [meId, setMeId] = useState(getMyParticipantId(id))
 
+  // Bumped on every local mutation so an in-flight poll that started earlier
+  // can't clobber fresher state with a stale snapshot.
+  const mutationSeq = useRef(0)
+  const applyTab = useCallback((t) => {
+    mutationSeq.current++
+    setTab(t)
+  }, [])
+
   const refresh = useCallback(async () => {
+    const seq = mutationSeq.current
     try {
-      setTab(await api.getTab(id))
+      const t = await api.getTab(id)
+      if (mutationSeq.current !== seq) return // a mutation landed mid-fetch; keep its result
+      setTab(t)
     } catch (err) {
       setError(err.message)
     }
@@ -44,6 +58,14 @@ export default function TabView() {
     return () => clearInterval(t)
   }, [refresh])
 
+  // Derived values memoized so the 2.5s poll doesn't re-run them every tick.
+  const calc = useMemo(() => (tab ? computeTotals(tab) : null), [tab])
+  const nameById = useMemo(
+    () => (tab ? Object.fromEntries(tab.participants.map((p) => [p.id, p.name])) : {}),
+    [tab],
+  )
+  const shareUrl = useMemo(() => `${window.location.origin}/t/${id}`, [id])
+
   if (error) {
     return (
       <Center>
@@ -54,23 +76,49 @@ export default function TabView() {
   }
   if (!tab) return <Center><p className="text-slate-400">Loading tab…</p></Center>
 
-  const calc = computeTotals(tab)
   const me = tab.participants.find((p) => p.id === meId) || null
-  const nameById = Object.fromEntries(tab.participants.map((p) => [p.id, p.name]))
-  const shareUrl = `${window.location.origin}/t/${id}`
+  const hasItems = tab.items.length > 0
+
+  async function onScan(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setScanning(true)
+    setScanIssue(null)
+    setError(null)
+    try {
+      const dataUrl = await fileToDataUrl(file)
+      const res = await api.scan(id, dataUrl, creatorToken)
+      applyTab(res.tab)
+      if (!res.ok) setScanIssue(res.issue || 'That photo was hard to read — try again with better lighting.')
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setScanning(false)
+    }
+  }
+
+  async function removeItem(itemId) {
+    try {
+      applyTab(await api.removeItem(id, itemId, creatorToken))
+    } catch (err) {
+      setError(err.message)
+    }
+  }
 
   async function join(name, venmo) {
     const { id: pid } = await api.addParticipant(id, { name, venmo })
     setMyParticipantId(id, pid)
     setMeId(pid)
     if (venmo) setMyVenmo(venmo)
+    mutationSeq.current++
     refresh()
   }
 
   async function claim(itemId, share) {
     if (!meId) return
     try {
-      setTab(await api.setClaim(id, { participantId: meId, itemId, share }))
+      applyTab(await api.setClaim(id, { participantId: meId, itemId, share }))
     } catch (err) {
       setError(err.message)
     }
@@ -78,16 +126,18 @@ export default function TabView() {
 
   async function togglePaid() {
     await api.setPaid(id, meId, me.paid ? 0 : 1)
+    mutationSeq.current++
     refresh()
   }
 
   async function toggleConfirm(pid, confirmed) {
     await api.confirm(id, pid, confirmed ? 1 : 0, creatorToken)
+    mutationSeq.current++
     refresh()
   }
 
   async function saveExtras(tax, tip) {
-    setTab(await api.updateExtras(id, { tax, tip }, creatorToken))
+    applyTab(await api.updateExtras(id, { tax, tip }, creatorToken))
   }
 
   return (
@@ -99,12 +149,13 @@ export default function TabView() {
         </button>
       </div>
 
-      <h1 className="mt-2 text-2xl font-black">{tab.merchant || 'The tab'}</h1>
+      <h1 className="mt-2 text-2xl font-black">{tab.merchant || 'Your tab'}</h1>
       <p className="text-sm text-slate-500">
-        Pay <span className="font-semibold">@{tab.creator_venmo}</span> · {money(calc.receiptTotal, tab.currency)} total
+        Pay <span className="font-semibold">@{tab.creator_venmo}</span>
+        {hasItems ? <> · {money(calc.receiptTotal, tab.currency)} total</> : null}
       </p>
 
-      {(showShare || (isCreator && tab.participants.length === 0)) && (
+      {(showShare || (isCreator && hasItems && tab.participants.length === 0)) && (
         <div className="card mt-4 flex flex-col items-center p-5">
           <QrCode value={shareUrl} />
           <p className="mt-3 text-center text-xs text-slate-400">Scan to hop on the tab</p>
@@ -118,92 +169,172 @@ export default function TabView() {
         </div>
       )}
 
-      {!me && <JoinCard onJoin={join} />}
+      {/* Creator: scan receipts to add items */}
+      {isCreator && (
+        <div className="card mt-4 p-5">
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={onScan}
+          />
+          <button className="btn-primary w-full" disabled={scanning} onClick={() => fileRef.current?.click()}>
+            {scanning ? 'Reading receipt…' : hasItems ? '📷 Scan another receipt' : '📷 Scan a receipt to start'}
+          </button>
+          {!hasItems && (
+            <p className="mt-2 text-center text-xs text-slate-400">
+              Items come from your receipt photo — snap it and they'll load in.
+            </p>
+          )}
+        </div>
+      )}
+
+      {scanIssue && (
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          <span className="font-semibold">Heads up:</span> {scanIssue}
+        </div>
+      )}
+
+      {/* Empty state for non-creators */}
+      {!hasItems && !isCreator && (
+        <div className="card mt-4 p-6 text-center text-slate-500">
+          The host is still setting up this tab. Check back in a moment. 🧾
+        </div>
+      )}
+
+      {hasItems && !me && <JoinCard onJoin={join} />}
 
       {/* Items */}
-      <div className="mt-5 space-y-2">
-        {tab.items.map((it) => {
-          const covered = calc.coverage[it.id] || 0
-          const myClaim = tab.claims.find((c) => c.item_id === it.id && c.participant_id === meId)
-          const myShare = myClaim ? Number(myClaim.share) : 0
-          const claimers = tab.claims
-            .filter((c) => c.item_id === it.id)
-            .map((c) => ({ name: nameById[c.participant_id], share: Number(c.share) }))
-          return (
-            <div key={it.id} className="card p-4">
-              <div className="flex items-baseline justify-between">
-                <span className="font-semibold">{it.name}</span>
-                <span className="tabular-nums text-slate-600">{money(it.price, tab.currency)}</span>
+      {hasItems && (
+        <div className="mt-5 space-y-2">
+          {tab.items.map((it) => {
+            const claimsForItem = tab.claims.filter((c) => c.item_id === it.id)
+            const myShare = Number(claimsForItem.find((c) => c.participant_id === meId)?.share || 0)
+            const othersShare = claimsForItem
+              .filter((c) => c.participant_id !== meId)
+              .reduce((s, c) => s + Number(c.share), 0)
+            const covered = othersShare + myShare
+            const remaining = Math.max(0, round(1 - othersShare)) // most I can still take
+            const fullyTaken = remaining <= 0.001 && myShare <= 0
+            const claimers = claimsForItem.map((c) => ({
+              name: nameById[c.participant_id],
+              share: Number(c.share),
+            }))
+
+            return (
+              <div key={it.id} className="card p-4">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="font-semibold">{it.name}</span>
+                  <div className="flex items-baseline gap-2">
+                    <span className="tabular-nums text-slate-600">{money(it.price, tab.currency)}</span>
+                    {isCreator && (
+                      <button
+                        onClick={() => removeItem(it.id)}
+                        className="text-slate-300 hover:text-red-500"
+                        aria-label="Remove item"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <CoverageBar covered={covered} />
+                {claimers.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {claimers.map((c, i) => (
+                      <span key={i} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">
+                        {c.name} {Math.round(c.share * 100)}%
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {me && (
+                  <div className="mt-3">
+                    {fullyTaken ? (
+                      <span className="text-xs font-semibold text-slate-400">Fully claimed by others</span>
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {FRACTIONS.map((f) => {
+                          const disabled = f.value > remaining + 0.01 && Math.abs(myShare - f.value) > 0.01
+                          const active = Math.abs(myShare - f.value) < 0.01
+                          return (
+                            <button
+                              key={f.label}
+                              disabled={disabled}
+                              onClick={() => claim(it.id, f.value)}
+                              className={`rounded-lg px-2.5 py-1 text-sm font-semibold ${
+                                active
+                                  ? 'bg-venmo text-white'
+                                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:opacity-40 disabled:hover:bg-slate-100'
+                              }`}
+                            >
+                              {f.label}
+                            </button>
+                          )
+                        })}
+                        <button
+                          onClick={() => claim(it.id, 1)}
+                          className={`rounded-lg px-2.5 py-1 text-sm font-semibold ${
+                            myShare > 0 && Math.abs(covered - 1) < 0.01
+                              ? 'bg-venmo text-white'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          {othersShare > 0.001 ? 'Rest' : 'All'}
+                        </button>
+                        <button
+                          onClick={() => {
+                            const maxPct = Math.round(remaining * 100)
+                            const pct = window.prompt(
+                              `Your share of this item, in % (up to ${maxPct}% left)`,
+                              String(Math.round(myShare * 100) || ''),
+                            )
+                            if (pct == null) return
+                            const v = Math.min(remaining, Math.max(0, parseFloat(pct) || 0) / 100)
+                            claim(it.id, v)
+                          }}
+                          className="rounded-lg bg-slate-100 px-2.5 py-1 text-sm font-semibold text-slate-600 hover:bg-slate-200"
+                        >
+                          %
+                        </button>
+                        {myShare > 0 && (
+                          <button
+                            onClick={() => claim(it.id, 0)}
+                            className="rounded-lg px-2.5 py-1 text-sm font-semibold text-red-500 hover:bg-red-50"
+                          >
+                            clear
+                          </button>
+                        )}
+                        {remaining < 0.999 && remaining > 0.001 && (
+                          <span className="ml-1 text-[11px] text-slate-400">{Math.round(remaining * 100)}% left</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
+            )
+          })}
+        </div>
+      )}
 
-              <CoverageBar covered={covered} />
-              {claimers.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {claimers.map((c, i) => (
-                    <span
-                      key={i}
-                      className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600"
-                    >
-                      {c.name} {Math.round(c.share * 100)}%
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {me && (
-                <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                  {FRACTIONS.map((f) => (
-                    <button
-                      key={f.label}
-                      onClick={() => claim(it.id, f.value)}
-                      className={`rounded-lg px-2.5 py-1 text-sm font-semibold ${
-                        Math.abs(myShare - f.value) < 0.01
-                          ? 'bg-venmo text-white'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
-                    >
-                      {f.label}
-                    </button>
-                  ))}
-                  <button
-                    onClick={() => {
-                      const pct = window.prompt('Your share of this item, in %', String(Math.round(myShare * 100) || ''))
-                      if (pct == null) return
-                      const v = Math.max(0, Math.min(100, parseFloat(pct) || 0)) / 100
-                      claim(it.id, v)
-                    }}
-                    className="rounded-lg bg-slate-100 px-2.5 py-1 text-sm font-semibold text-slate-600 hover:bg-slate-200"
-                  >
-                    %
-                  </button>
-                  {myShare > 0 && (
-                    <button
-                      onClick={() => claim(it.id, 0)}
-                      className="rounded-lg px-2.5 py-1 text-sm font-semibold text-red-500 hover:bg-red-50"
-                    >
-                      clear
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
-
-      {calc.extras > 0 && (
+      {hasItems && calc.extras > 0 && (
         <p className="mt-3 text-center text-xs text-slate-400">
           + {money(calc.extras, tab.currency)} tax & tip, split by what you ordered
         </p>
       )}
-      {calc.unclaimedSubtotal > 0.01 && (
+      {hasItems && calc.unclaimedSubtotal > 0.01 && (
         <p className="mt-1 text-center text-xs text-amber-600">
           {money(calc.unclaimedSubtotal, tab.currency)} of items still unclaimed
         </p>
       )}
 
       {/* My total */}
-      {me && (
+      {hasItems && me && (
         <MyTotal
           me={calc.perParticipant.find((p) => p.id === meId)}
           tab={tab}
@@ -213,7 +344,7 @@ export default function TabView() {
       )}
 
       {/* Creator controls */}
-      {isCreator && (
+      {isCreator && hasItems && (
         <CreatorPanel tab={tab} calc={calc} onConfirm={toggleConfirm} onSaveExtras={saveExtras} />
       )}
     </div>
@@ -222,13 +353,9 @@ export default function TabView() {
 
 function CoverageBar({ covered }) {
   const pct = Math.min(100, Math.round(covered * 100))
-  const over = covered > 1.01
   return (
     <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-      <div
-        className={`h-full rounded-full ${over ? 'bg-amber-500' : 'bg-venmo'}`}
-        style={{ width: `${pct}%` }}
-      />
+      <div className="h-full rounded-full bg-venmo" style={{ width: `${pct}%` }} />
     </div>
   )
 }
@@ -311,9 +438,7 @@ function MyTotal({ me, tab, isCreator, onTogglePaid }) {
             {me.paid ? '✓ Marked as paid (tap to undo)' : 'Mark as paid'}
           </button>
           {me.confirmed ? (
-            <p className="mt-2 text-center text-xs font-semibold text-green-600">
-              ✓ Host confirmed they got it
-            </p>
+            <p className="mt-2 text-center text-xs font-semibold text-green-600">✓ Host confirmed they got it</p>
           ) : (
             me.paid && <p className="mt-2 text-center text-xs text-slate-400">Waiting for host to confirm…</p>
           )}
@@ -328,9 +453,7 @@ function CreatorPanel({ tab, calc, onConfirm, onSaveExtras }) {
   const [tip, setTip] = useState(String(tab.tip || ''))
   const [savedMsg, setSavedMsg] = useState('')
 
-  const collected = calc.perParticipant
-    .filter((p) => p.confirmed)
-    .reduce((s, p) => s + p.total, 0)
+  const collected = calc.perParticipant.filter((p) => p.confirmed).reduce((s, p) => s + p.total, 0)
 
   return (
     <div className="mt-6">
@@ -345,6 +468,17 @@ function CreatorPanel({ tab, calc, onConfirm, onSaveExtras }) {
           <label className="text-sm font-semibold text-slate-600">Tip</label>
           <input className="input w-28 text-right" inputMode="decimal" value={tip} onChange={(e) => setTip(e.target.value)} />
         </div>
+        <div className="mt-3 flex gap-2">
+          {[15, 18, 20, 25].map((p) => (
+            <button
+              key={p}
+              onClick={() => setTip(String(round((calc.receiptSubtotal * p) / 100)))}
+              className="btn-ghost flex-1 px-0 text-sm"
+            >
+              {p}%
+            </button>
+          ))}
+        </div>
         <button
           className="btn-ghost mt-3 w-full text-sm"
           onClick={async () => {
@@ -355,6 +489,7 @@ function CreatorPanel({ tab, calc, onConfirm, onSaveExtras }) {
         >
           {savedMsg || 'Update tax & tip'}
         </button>
+        <p className="mt-2 text-[11px] text-slate-400">Tip % is calculated on the pre-tax subtotal.</p>
       </div>
 
       <div className="card mt-3 divide-y divide-slate-100">

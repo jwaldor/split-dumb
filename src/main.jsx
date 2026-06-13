@@ -3,12 +3,10 @@ import ReactDOM from 'react-dom/client'
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import './index.css'
 import Home from './pages/Home.jsx'
-import CreateTab from './pages/CreateTab.jsx'
 import TabView from './pages/TabView.jsx'
 
 const router = createBrowserRouter([
   { path: '/', element: <Home /> },
-  { path: '/new', element: <CreateTab /> },
   { path: '/t/:id', element: <TabView /> },
 ])
 

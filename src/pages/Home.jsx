@@ -1,26 +1,31 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getMyVenmo, setMyVenmo } from '../api.js'
+import { api, getMyVenmo, setMyVenmo, setCreatorToken, listCreatedTabIds } from '../api.js'
 
 export default function Home() {
   const navigate = useNavigate()
   const [venmo, setVenmo] = useState(getMyVenmo())
   const [recents, setRecents] = useState([])
+  const [starting, setStarting] = useState(false)
+  const [error, setError] = useState(null)
 
   useEffect(() => {
     // Surface tabs this device created (creator tokens stashed in localStorage).
-    const found = []
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i)
-      const m = key && key.match(/^splitdumb:tab:(.+):creator$/)
-      if (m) found.push(m[1])
-    }
-    setRecents(found)
+    setRecents(listCreatedTabIds())
   }, [])
 
-  function start() {
+  async function start() {
     setMyVenmo(venmo)
-    navigate('/new')
+    setStarting(true)
+    setError(null)
+    try {
+      const { id, creatorToken } = await api.createTab(venmo)
+      setCreatorToken(id, creatorToken)
+      navigate(`/t/${id}`)
+    } catch (err) {
+      setError(err.message)
+      setStarting(false)
+    }
   }
 
   return (
@@ -50,9 +55,10 @@ export default function Home() {
         <p className="mt-2 text-xs text-slate-400">
           Saved on this device only — it's where people will pay you.
         </p>
-        <button className="btn-primary mt-4 w-full" disabled={!venmo.trim()} onClick={start}>
-          Start a new tab
+        <button className="btn-primary mt-4 w-full" disabled={!venmo.trim() || starting} onClick={start}>
+          {starting ? 'Starting…' : 'Start a new tab'}
         </button>
+        {error && <p className="mt-2 text-center text-sm text-red-600">{error}</p>}
       </div>
 
       {recents.length > 0 && (
