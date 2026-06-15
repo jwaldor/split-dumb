@@ -6,10 +6,10 @@ A dead-simple, account-free bill splitter (think Splitwise without the accounts)
 
 1. You enter your Venmo handle once — saved to `localStorage`.
 2. "Start a tab" creates an empty tab (short shareable URL + QR code).
-3. You add a receipt photo — **take a photo or upload a file** — and it's OCR'd
-   into line items + tax/tip, added to the tab. Scan more receipts to append.
-   Afterward the creator can **edit, add, or remove items by hand** (the "Edit /
-   add items" mode) to fix OCR mistakes or add anything missed. Tax/tip editable.
+3. You add **one** receipt — **take a photo or upload a file** — and it's OCR'd
+   into line items + tax/tip. One scan per tab (the server rejects a second).
+   Afterward the creator refines by hand via **Edit / add items** (fix OCR
+   mistakes, add what was missed, remove extras). Tax/tip editable.
 4. Anyone scans the QR, enters their name, and claims items (fully or partially —
    you can only claim the portion of an item that's still unclaimed).
 5. Each person sees what they owe (their items + proportional tax/tip), taps a

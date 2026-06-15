@@ -8,9 +8,9 @@ claims their items (fully or partially) and Venmos the host.
 1. Open the site, type your **Venmo handle** (saved to this device's localStorage).
 2. **Start a tab** — you get a short URL + QR code.
 3. **Add a receipt** — take a photo *or upload a file* — GPT-5.4-mini (via
-   OpenRouter) reads it into line items + tax/tip and adds them to the tab. If
-   the photo's no good, it tells you why. Scan more to append, and use **Edit /
-   add items** to fix OCR mistakes or add anything by hand.
+   OpenRouter) reads it into line items + tax/tip. One receipt per tab; if the
+   photo's no good it tells you why so you can retry. Then use **Edit / add
+   items** to fix OCR mistakes or add anything by hand.
 4. Add a **tip** if the receipt didn't include one — it's split proportionally.
 5. Anyone scans the QR, enters their name, and **claims items** — quick fractions
    (¼, ⅓, ½, Rest) or any custom %, capped at what's still unclaimed. Tax & tip

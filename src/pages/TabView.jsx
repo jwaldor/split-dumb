@@ -201,34 +201,35 @@ export default function TabView() {
         </div>
       )}
 
-      {/* Creator: scan receipts to add items (camera or file upload) */}
+      {/* Creator: scan ONE receipt to seed items (camera or file upload),
+          then refine by hand. */}
       {isCreator && !editing && (
         <div className="card mt-4 p-5">
-          <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onScan} />
-          <input ref={uploadRef} type="file" accept="image/*" className="hidden" onChange={onScan} />
-          {scanning ? (
+          {hasItems ? (
+            <button onClick={startEditing} className="btn-ghost w-full">
+              ✏️ Edit / add items
+            </button>
+          ) : scanning ? (
             <>
               <button className="btn-primary w-full" disabled>Reading receipt…</button>
               <FunFact />
             </>
           ) : (
-            <div className="flex gap-2">
-              <button className="btn-primary flex-1" onClick={() => cameraRef.current?.click()}>
-                📷 Take a photo
-              </button>
-              <button className="btn-ghost flex-1" onClick={() => uploadRef.current?.click()}>
-                🖼️ Upload a file
-              </button>
-            </div>
-          )}
-          {hasItems ? (
-            <button onClick={startEditing} className="mt-3 w-full text-sm font-semibold text-venmo">
-              ✏️ Edit / add items
-            </button>
-          ) : (
-            <p className="mt-2 text-center text-xs text-slate-400">
-              Scan or upload a receipt to load items — then you can edit or add more.
-            </p>
+            <>
+              <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onScan} />
+              <input ref={uploadRef} type="file" accept="image/*" className="hidden" onChange={onScan} />
+              <div className="flex gap-2">
+                <button className="btn-primary flex-1" onClick={() => cameraRef.current?.click()}>
+                  📷 Take a photo
+                </button>
+                <button className="btn-ghost flex-1" onClick={() => uploadRef.current?.click()}>
+                  🖼️ Upload a file
+                </button>
+              </div>
+              <p className="mt-2 text-center text-xs text-slate-400">
+                Scan or upload one receipt to load items — then edit or add by hand.
+              </p>
+            </>
           )}
         </div>
       )}

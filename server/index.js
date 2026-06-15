@@ -127,6 +127,10 @@ app.post('/api/tabs/:id/scan', scanRateLimit, asyncH(async (req, res) => {
   if (!image || typeof image !== 'string' || !image.startsWith('data:image/')) {
     return res.status(400).json({ error: 'Send an "image" data URL (data:image/...;base64,...).' })
   }
+  // One receipt per tab — once items exist, refine them by hand instead.
+  if (q.countItems.get(tab.id).n > 0) {
+    return res.status(409).json({ error: 'This tab already has a receipt. Edit the items instead.' })
+  }
 
   const result = await readReceipt(image)
 
