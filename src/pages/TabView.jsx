@@ -12,6 +12,7 @@ import { computeTotals, money, round } from '../lib/calc.js'
 import { venmoPayLink } from '../lib/venmo.js'
 import { fileToDataUrl } from '../lib/image.js'
 import QrCode from '../components/QrCode.jsx'
+import FunFact from '../components/FunFact.jsx'
 
 const FRACTIONS = [
   { label: '¼', value: 0.25 },
@@ -206,7 +207,10 @@ export default function TabView() {
           <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onScan} />
           <input ref={uploadRef} type="file" accept="image/*" className="hidden" onChange={onScan} />
           {scanning ? (
-            <button className="btn-primary w-full" disabled>Reading receipt…</button>
+            <>
+              <button className="btn-primary w-full" disabled>Reading receipt…</button>
+              <FunFact />
+            </>
           ) : (
             <div className="flex gap-2">
               <button className="btn-primary flex-1" onClick={() => cameraRef.current?.click()}>
