@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api, getMyVenmo, setMyVenmo, setCreatorToken, listCreatedTabIds } from '../api.js'
+import { api, getMyVenmo, setMyVenmo, setCreatorToken, getCreatedTabs } from '../api.js'
+
+function formatWhen(ms) {
+  return new Date(ms).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
 
 export default function Home() {
   const navigate = useNavigate()
@@ -10,8 +19,9 @@ export default function Home() {
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    // Surface tabs this device created (creator tokens stashed in localStorage).
-    setRecents(listCreatedTabIds())
+    // Surface tabs this device created (creator tokens stashed in localStorage),
+    // newest first, labeled by merchant + when they were started.
+    getCreatedTabs().then(setRecents).catch(() => {})
   }, [])
 
   async function start() {
@@ -65,14 +75,17 @@ export default function Home() {
         <div className="mt-8">
           <h2 className="text-sm font-semibold text-slate-500">Tabs you started</h2>
           <div className="mt-2 space-y-2">
-            {recents.map((id) => (
+            {recents.map((t) => (
               <button
-                key={id}
-                onClick={() => navigate(`/t/${id}`)}
-                className="card flex w-full items-center justify-between p-4 text-left hover:bg-slate-50"
+                key={t.id}
+                onClick={() => navigate(`/t/${t.id}`)}
+                className="card flex w-full items-center justify-between gap-3 p-4 text-left hover:bg-slate-50"
               >
-                <span className="font-mono font-semibold">{id}</span>
-                <span className="text-sm text-venmo">Open →</span>
+                <span className="min-w-0">
+                  <span className="block truncate font-semibold">{t.merchant || 'Untitled tab'}</span>
+                  <span className="block text-xs text-slate-400">{formatWhen(t.created_at)}</span>
+                </span>
+                <span className="shrink-0 text-sm text-venmo">Open →</span>
               </button>
             ))}
           </div>

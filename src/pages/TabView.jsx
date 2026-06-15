@@ -27,7 +27,9 @@ export default function TabView() {
   const [showShare, setShowShare] = useState(false)
   const [scanning, setScanning] = useState(false)
   const [scanIssue, setScanIssue] = useState(null)
-  const fileRef = useRef(null)
+  const [editing, setEditing] = useState(false)
+  const cameraRef = useRef(null)
+  const uploadRef = useRef(null)
 
   const creatorToken = getCreatorToken(id)
   const isCreator = !!creatorToken
@@ -41,11 +43,14 @@ export default function TabView() {
     setTab(t)
   }, [])
 
+  // Pause polling while editing items so it can't clobber inputs mid-edit.
+  const editingRef = useRef(false)
   const refresh = useCallback(async () => {
+    if (editingRef.current) return
     const seq = mutationSeq.current
     try {
       const t = await api.getTab(id)
-      if (mutationSeq.current !== seq) return // a mutation landed mid-fetch; keep its result
+      if (editingRef.current || mutationSeq.current !== seq) return
       setTab(t)
     } catch (err) {
       setError(err.message)
@@ -104,6 +109,32 @@ export default function TabView() {
     } catch (err) {
       setError(err.message)
     }
+  }
+
+  async function addItem() {
+    try {
+      applyTab(await api.addItem(id, { name: '', price: 0 }, creatorToken))
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  async function saveItem(itemId, name, price) {
+    try {
+      applyTab(await api.updateItem(id, itemId, { name, price }, creatorToken))
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  function startEditing() {
+    editingRef.current = true
+    setEditing(true)
+  }
+  function stopEditing() {
+    editingRef.current = false
+    setEditing(false)
+    refresh()
   }
 
   async function join(name, venmo) {
@@ -169,26 +200,45 @@ export default function TabView() {
         </div>
       )}
 
-      {/* Creator: scan receipts to add items */}
-      {isCreator && (
+      {/* Creator: scan receipts to add items (camera or file upload) */}
+      {isCreator && !editing && (
         <div className="card mt-4 p-5">
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="hidden"
-            onChange={onScan}
-          />
-          <button className="btn-primary w-full" disabled={scanning} onClick={() => fileRef.current?.click()}>
-            {scanning ? 'Reading receipt…' : hasItems ? '📷 Scan another receipt' : '📷 Scan a receipt to start'}
-          </button>
-          {!hasItems && (
+          <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onScan} />
+          <input ref={uploadRef} type="file" accept="image/*" className="hidden" onChange={onScan} />
+          {scanning ? (
+            <button className="btn-primary w-full" disabled>Reading receipt…</button>
+          ) : (
+            <div className="flex gap-2">
+              <button className="btn-primary flex-1" onClick={() => cameraRef.current?.click()}>
+                📷 Take a photo
+              </button>
+              <button className="btn-ghost flex-1" onClick={() => uploadRef.current?.click()}>
+                🖼️ Upload a file
+              </button>
+            </div>
+          )}
+          {hasItems ? (
+            <button onClick={startEditing} className="mt-3 w-full text-sm font-semibold text-venmo">
+              ✏️ Edit / add items
+            </button>
+          ) : (
             <p className="mt-2 text-center text-xs text-slate-400">
-              Items come from your receipt photo — snap it and they'll load in.
+              Scan or upload a receipt to load items — then you can edit or add more.
             </p>
           )}
         </div>
+      )}
+
+      {/* Creator: edit / add items by hand */}
+      {isCreator && editing && (
+        <EditItems
+          items={tab.items}
+          currency={tab.currency}
+          onEdit={saveItem}
+          onAdd={addItem}
+          onRemove={removeItem}
+          onDone={stopEditing}
+        />
       )}
 
       {scanIssue && (
@@ -207,7 +257,7 @@ export default function TabView() {
       {hasItems && !me && <JoinCard onJoin={join} />}
 
       {/* Items */}
-      {hasItems && (
+      {hasItems && !editing && (
         <div className="mt-5 space-y-2">
           {tab.items.map((it) => {
             const claimsForItem = tab.claims.filter((c) => c.item_id === it.id)
@@ -227,18 +277,7 @@ export default function TabView() {
               <div key={it.id} className="card p-4">
                 <div className="flex items-baseline justify-between gap-2">
                   <span className="font-semibold">{it.name}</span>
-                  <div className="flex items-baseline gap-2">
-                    <span className="tabular-nums text-slate-600">{money(it.price, tab.currency)}</span>
-                    {isCreator && (
-                      <button
-                        onClick={() => removeItem(it.id)}
-                        className="text-slate-300 hover:text-red-500"
-                        aria-label="Remove item"
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </div>
+                  <span className="tabular-nums text-slate-600">{money(it.price, tab.currency)}</span>
                 </div>
 
                 <CoverageBar covered={covered} />
@@ -322,19 +361,19 @@ export default function TabView() {
         </div>
       )}
 
-      {hasItems && calc.extras > 0 && (
+      {hasItems && !editing && calc.extras > 0 && (
         <p className="mt-3 text-center text-xs text-slate-400">
           + {money(calc.extras, tab.currency)} tax & tip, split by what you ordered
         </p>
       )}
-      {hasItems && calc.unclaimedSubtotal > 0.01 && (
+      {hasItems && !editing && calc.unclaimedSubtotal > 0.01 && (
         <p className="mt-1 text-center text-xs text-amber-600">
           {money(calc.unclaimedSubtotal, tab.currency)} of items still unclaimed
         </p>
       )}
 
       {/* My total */}
-      {hasItems && me && (
+      {hasItems && !editing && me && (
         <MyTotal
           me={calc.perParticipant.find((p) => p.id === meId)}
           tab={tab}
@@ -344,9 +383,63 @@ export default function TabView() {
       )}
 
       {/* Creator controls */}
-      {isCreator && hasItems && (
+      {isCreator && !editing && hasItems && (
         <CreatorPanel tab={tab} calc={calc} onConfirm={toggleConfirm} onSaveExtras={saveExtras} />
       )}
+    </div>
+  )
+}
+
+function EditItems({ items, currency, onEdit, onAdd, onRemove, onDone }) {
+  return (
+    <div className="card mt-4 p-5">
+      <div className="flex items-center justify-between">
+        <h2 className="font-bold">Edit items</h2>
+        <button onClick={onDone} className="text-sm font-semibold text-venmo">Done</button>
+      </div>
+      <div className="mt-3 space-y-2">
+        {items.map((it) => (
+          <ItemEditor key={it.id} item={it} currency={currency} onEdit={onEdit} onRemove={onRemove} />
+        ))}
+        {items.length === 0 && (
+          <p className="py-2 text-center text-sm text-slate-400">No items yet — add one below.</p>
+        )}
+      </div>
+      <button onClick={onAdd} className="mt-3 text-sm font-semibold text-venmo">+ Add item</button>
+      <p className="mt-3 text-[11px] text-slate-400">Changes save as you go. Tap Done when you're finished.</p>
+    </div>
+  )
+}
+
+// One editable row. Holds local input state and commits on blur so the
+// (paused) poll can't fight your typing.
+function ItemEditor({ item, currency, onEdit, onRemove }) {
+  const [name, setName] = useState(item.name)
+  const [price, setPrice] = useState(String(item.price ?? ''))
+  const commit = () => {
+    const p = parseFloat(price) || 0
+    if (name !== item.name || p !== Number(item.price)) onEdit(item.id, name.trim() || 'Item', p)
+  }
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        className="input flex-1"
+        placeholder="Item name"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onBlur={commit}
+      />
+      <input
+        className="input w-24 text-right"
+        placeholder="0.00"
+        inputMode="decimal"
+        value={price}
+        onChange={(e) => setPrice(e.target.value)}
+        onBlur={commit}
+      />
+      <button onClick={() => onRemove(item.id)} className="px-1 text-slate-300 hover:text-red-500" aria-label="Remove item">
+        ✕
+      </button>
     </div>
   )
 }

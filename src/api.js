@@ -16,6 +16,10 @@ export const api = {
   getTab: (id) => req('GET', `/api/tabs/${id}`),
   scan: (id, image, creatorToken) =>
     req('POST', `/api/tabs/${id}/scan`, { image }, { 'x-creator-token': creatorToken }),
+  addItem: (id, item, creatorToken) =>
+    req('POST', `/api/tabs/${id}/items`, item, { 'x-creator-token': creatorToken }),
+  updateItem: (id, itemId, item, creatorToken) =>
+    req('PATCH', `/api/tabs/${id}/items/${itemId}`, item, { 'x-creator-token': creatorToken }),
   removeItem: (id, itemId, creatorToken) =>
     req('DELETE', `/api/tabs/${id}/items/${itemId}`, null, { 'x-creator-token': creatorToken }),
   updateExtras: (id, { tax, tip }, creatorToken) =>
@@ -53,4 +57,18 @@ export function listCreatedTabIds() {
     if (m) ids.push(m[1])
   }
   return ids
+}
+
+// Fetch metadata (merchant, created_at) for the tabs this device created,
+// newest first. Tabs that 404 (deleted) are dropped.
+export async function getCreatedTabs() {
+  const results = await Promise.all(
+    listCreatedTabIds().map((id) =>
+      api
+        .getTab(id)
+        .then((t) => ({ id, merchant: t.merchant, created_at: t.created_at }))
+        .catch(() => null),
+    ),
+  )
+  return results.filter(Boolean).sort((a, b) => b.created_at - a.created_at)
 }

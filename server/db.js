@@ -70,6 +70,7 @@ export const q = {
   getItems: db.prepare(`SELECT * FROM items WHERE tab_id = ? ORDER BY position, rowid`),
   countItems: db.prepare(`SELECT COUNT(*) AS n FROM items WHERE tab_id = ?`),
   deleteItem: db.prepare(`DELETE FROM items WHERE id = ? AND tab_id = ?`),
+  updateItem: db.prepare(`UPDATE items SET name = @name, price = @price WHERE id = @id AND tab_id = @tab_id`),
   setMeta: db.prepare(`UPDATE tabs SET merchant = @merchant, currency = @currency WHERE id = @id`),
 
   insertParticipant: db.prepare(`

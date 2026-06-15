@@ -169,6 +169,35 @@ app.patch('/api/tabs/:id', asyncH((req, res) => {
   res.json(assembleTab(tab.id))
 }))
 
+// Creator adds an item by hand (to fix what the scan missed).
+app.post('/api/tabs/:id/items', asyncH((req, res) => {
+  const tab = loadTab(req, res)
+  if (!tab) return
+  if (!requireCreator(req, res, tab)) return
+  q.insertItem.run({
+    id: nanoid(10),
+    tab_id: tab.id,
+    name: String(req.body?.name ?? '').trim() || 'Item',
+    price: Number(req.body?.price) || 0,
+    position: q.countItems.get(tab.id).n,
+  })
+  res.json(assembleTab(tab.id))
+}))
+
+// Creator edits an item's name/price (to fix an OCR mistake).
+app.patch('/api/tabs/:id/items/:itemId', asyncH((req, res) => {
+  const tab = loadTab(req, res)
+  if (!tab) return
+  if (!requireCreator(req, res, tab)) return
+  q.updateItem.run({
+    id: req.params.itemId,
+    tab_id: tab.id,
+    name: String(req.body?.name ?? '').trim() || 'Item',
+    price: Number(req.body?.price) || 0,
+  })
+  res.json(assembleTab(tab.id))
+}))
+
 // Creator removes a (mis-scanned) item. Claims on it cascade-delete via FK.
 app.delete('/api/tabs/:id/items/:itemId', asyncH((req, res) => {
   const tab = loadTab(req, res)
