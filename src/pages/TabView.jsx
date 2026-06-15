@@ -84,6 +84,7 @@ export default function TabView() {
 
   const me = tab.participants.find((p) => p.id === meId) || null
   const hasItems = tab.items.length > 0
+  const anyPaid = tab.participants.some((p) => p.paid) // items freeze once anyone pays
 
   async function onScan(e) {
     const file = e.target.files?.[0]
@@ -206,9 +207,15 @@ export default function TabView() {
       {isCreator && !editing && (
         <div className="card mt-4 p-5">
           {hasItems ? (
-            <button onClick={startEditing} className="btn-ghost w-full">
-              ✏️ Edit / add items
-            </button>
+            anyPaid ? (
+              <p className="text-center text-sm text-slate-500">
+                🔒 Items are locked — someone's already marked themselves paid.
+              </p>
+            ) : (
+              <button onClick={startEditing} className="btn-ghost w-full">
+                ✏️ Edit / add items
+              </button>
+            )
           ) : scanning ? (
             <>
               <button className="btn-primary w-full" disabled>Reading receipt…</button>

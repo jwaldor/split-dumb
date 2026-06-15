@@ -40,6 +40,16 @@ function loadTab(req, res) {
 
 const normalizeVenmo = (v) => String(v || '').replace(/^@/, '').trim()
 
+// Once anyone has marked themselves paid, items are frozen — editing them would
+// change what an already-paid person owes.
+function requireItemsUnlocked(req, res, tab) {
+  if (q.countPaid.get(tab.id).n > 0) {
+    res.status(409).json({ error: 'Someone already marked themselves paid — items are locked.' })
+    return false
+  }
+  return true
+}
+
 function requireCreator(req, res, tab) {
   const token = req.get('x-creator-token')
   if (!token || token !== tab.creator_token) {
@@ -178,6 +188,7 @@ app.post('/api/tabs/:id/items', asyncH((req, res) => {
   const tab = loadTab(req, res)
   if (!tab) return
   if (!requireCreator(req, res, tab)) return
+  if (!requireItemsUnlocked(req, res, tab)) return
   q.insertItem.run({
     id: nanoid(10),
     tab_id: tab.id,
@@ -193,6 +204,7 @@ app.patch('/api/tabs/:id/items/:itemId', asyncH((req, res) => {
   const tab = loadTab(req, res)
   if (!tab) return
   if (!requireCreator(req, res, tab)) return
+  if (!requireItemsUnlocked(req, res, tab)) return
   q.updateItem.run({
     id: req.params.itemId,
     tab_id: tab.id,
@@ -207,6 +219,7 @@ app.delete('/api/tabs/:id/items/:itemId', asyncH((req, res) => {
   const tab = loadTab(req, res)
   if (!tab) return
   if (!requireCreator(req, res, tab)) return
+  if (!requireItemsUnlocked(req, res, tab)) return
   q.deleteItem.run(req.params.itemId, tab.id)
   res.json(assembleTab(tab.id))
 }))

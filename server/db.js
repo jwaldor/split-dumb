@@ -78,6 +78,7 @@ export const q = {
     VALUES (@id, @tab_id, @name, @venmo, 0, 0, @created_at)
   `),
   getParticipants: db.prepare(`SELECT * FROM participants WHERE tab_id = ? ORDER BY created_at`),
+  countPaid: db.prepare(`SELECT COUNT(*) AS n FROM participants WHERE tab_id = ? AND paid = 1`),
   getParticipant: db.prepare(`SELECT * FROM participants WHERE id = ? AND tab_id = ?`),
   setPaid: db.prepare(`UPDATE participants SET paid = @paid WHERE id = @id AND tab_id = @tab_id`),
   setConfirmed: db.prepare(`UPDATE participants SET confirmed = @confirmed WHERE id = @id AND tab_id = @tab_id`),
