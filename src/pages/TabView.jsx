@@ -203,19 +203,13 @@ export default function TabView() {
       )}
 
       {/* Creator: scan ONE receipt to seed items (camera or file upload),
-          then refine by hand. */}
-      {isCreator && !editing && (
+          then refine by hand. Hidden entirely once items lock (someone paid). */}
+      {isCreator && !editing && !(hasItems && anyPaid) && (
         <div className="card mt-4 p-5">
           {hasItems ? (
-            anyPaid ? (
-              <p className="text-center text-sm text-slate-500">
-                🔒 Items are locked — someone's already marked themselves paid.
-              </p>
-            ) : (
-              <button onClick={startEditing} className="btn-ghost w-full">
-                ✏️ Edit / add items
-              </button>
-            )
+            <button onClick={startEditing} className="btn-ghost w-full">
+              ✏️ Edit / add items
+            </button>
           ) : scanning ? (
             <>
               <button className="btn-primary w-full" disabled>Reading receipt…</button>
