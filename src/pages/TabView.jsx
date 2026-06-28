@@ -2,14 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   api,
-  getMyVenmo,
-  setMyVenmo,
   getCreatorToken,
   getMyParticipantId,
   setMyParticipantId,
 } from '../api.js'
 import { computeTotals, money, round } from '../lib/calc.js'
-import { venmoPayLink } from '../lib/venmo.js'
+import { openVenmoPay } from '../lib/venmo.js'
 import { fileToDataUrl } from '../lib/image.js'
 import QrCode from '../components/QrCode.jsx'
 import FunFact from '../components/FunFact.jsx'
@@ -139,11 +137,11 @@ export default function TabView() {
     refresh()
   }
 
-  async function join(name, venmo) {
-    const { id: pid } = await api.addParticipant(id, { name, venmo })
+  async function join(name) {
+    // Payers don't need a Venmo handle — they're paying the host, not receiving.
+    const { id: pid } = await api.addParticipant(id, { name })
     setMyParticipantId(id, pid)
     setMeId(pid)
-    if (venmo) setMyVenmo(venmo)
     mutationSeq.current++
     refresh()
   }
@@ -461,7 +459,6 @@ function CoverageBar({ covered }) {
 
 function JoinCard({ onJoin }) {
   const [name, setName] = useState('')
-  const [venmo, setVenmo] = useState(getMyVenmo())
   const [busy, setBusy] = useState(false)
   return (
     <div className="card mt-4 p-5">
@@ -471,13 +468,9 @@ function JoinCard({ onJoin }) {
         placeholder="Your name"
         value={name}
         onChange={(e) => setName(e.target.value)}
-      />
-      <input
-        className="input mt-2"
-        placeholder="Your Venmo (optional)"
-        value={venmo}
-        onChange={(e) => setVenmo(e.target.value.replace(/^@/, ''))}
-        autoCapitalize="off"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && name.trim() && !busy) e.currentTarget.blur()
+        }}
       />
       <button
         className="btn-primary mt-3 w-full"
@@ -485,7 +478,7 @@ function JoinCard({ onJoin }) {
         onClick={async () => {
           setBusy(true)
           try {
-            await onJoin(name.trim(), venmo.trim())
+            await onJoin(name.trim())
           } finally {
             setBusy(false)
           }
@@ -500,7 +493,6 @@ function JoinCard({ onJoin }) {
 function MyTotal({ me, tab, isCreator, onTogglePaid }) {
   if (!me) return null
   const note = `${tab.merchant || 'SplitDumb'} — ${me.name}`
-  const payUrl = venmoPayLink({ handle: tab.creator_venmo, amount: me.total, note })
   return (
     <div className="card mt-5 border-venmo/30 p-5">
       <h2 className="font-bold">You owe</h2>
@@ -517,17 +509,15 @@ function MyTotal({ me, tab, isCreator, onTogglePaid }) {
         <p className="mt-3 text-center text-xs text-slate-400">You're the host — collect from everyone below.</p>
       ) : (
         <>
-          <a
-            href={payUrl}
-            target="_blank"
-            rel="noreferrer"
+          <button
             className="btn-primary mt-4 w-full"
             onClick={() => {
-              if (!me.paid) setTimeout(onTogglePaid, 400)
+              openVenmoPay({ handle: tab.creator_venmo, amount: me.total, note })
+              if (!me.paid) setTimeout(onTogglePaid, 600)
             }}
           >
             Pay @{tab.creator_venmo} on Venmo
-          </a>
+          </button>
           <button
             onClick={onTogglePaid}
             className={`mt-2 w-full rounded-xl py-2 text-sm font-semibold ${
