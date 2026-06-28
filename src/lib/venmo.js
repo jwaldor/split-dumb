@@ -27,31 +27,27 @@ export function venmoAppLink({ handle, amount, note }) {
   return `venmo://paycharge?${params.toString()}`
 }
 
-// Open Venmo to pay: try the app first, fall back to the web flow only if the
-// app doesn't take over. When the app opens, the page is backgrounded, which
-// fires visibilitychange/pagehide — we use that to cancel the web fallback.
+// Is this a phone/tablet (where the Venmo app likely exists and venmo:// works)?
+export function isMobile() {
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent || ''
+  if (/Android|iPhone|iPod|iPad/i.test(ua)) return true
+  // iPadOS 13+ masquerades as a Mac — detect by touch support.
+  if (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1) return true
+  return false
+}
+
+// Open Venmo to pay. On mobile, go straight to the app deep link with NO web
+// fallback — the app is what people want, and a timed fallback fires even when
+// the app *did* open (e.g. iOS's "Open in Venmo?" prompt delays the background
+// event), bouncing the user to the browser. On desktop there's no app, so open
+// the web flow in a new tab.
 export function openVenmoPay({ handle, amount, note }) {
-  const app = venmoAppLink({ handle, amount, note })
-  const web = venmoPayLink({ handle, amount, note })
-
-  let fired = false
-  const fallback = setTimeout(() => {
-    if (!fired) window.location.href = web
-  }, 1200)
-
-  const cancel = () => {
-    fired = true
-    clearTimeout(fallback)
-    document.removeEventListener('visibilitychange', onHide)
-    window.removeEventListener('pagehide', cancel)
+  if (isMobile()) {
+    window.location.href = venmoAppLink({ handle, amount, note })
+  } else {
+    window.open(venmoPayLink({ handle, amount, note }), '_blank', 'noopener')
   }
-  const onHide = () => {
-    if (document.visibilityState === 'hidden') cancel()
-  }
-  document.addEventListener('visibilitychange', onHide)
-  window.addEventListener('pagehide', cancel)
-
-  window.location.href = app
 }
 
 export function venmoProfileLink(handle) {
