@@ -237,11 +237,18 @@ app.post('/api/feedback', asyncH((req, res) => {
   const message = String(req.body?.message ?? '').trim()
   if (!message) return res.status(400).json({ error: 'Feedback can’t be empty.' })
 
+  // Email is optional. If given, do a light format check so typos don't slip in.
+  const email = String(req.body?.email ?? '').trim().slice(0, 254)
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: 'Enter a valid email or leave it blank.' })
+  }
+
   const tabId = req.body?.tabId ? String(req.body.tabId) : null
   q.insertFeedback.run({
     id: nanoid(12),
     tab_id: tabId && q.getTab.get(tabId) ? tabId : null,
     message: message.slice(0, MAX_FEEDBACK_LEN),
+    email: email || null,
     created_at: Date.now(),
   })
   res.json({ ok: true })

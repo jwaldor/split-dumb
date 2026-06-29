@@ -54,6 +54,7 @@ db.exec(`
     id         TEXT PRIMARY KEY,
     tab_id     TEXT,
     message    TEXT NOT NULL,
+    email      TEXT,
     created_at INTEGER NOT NULL
   );
 
@@ -61,6 +62,15 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_participants_tab ON participants(tab_id);
   CREATE INDEX IF NOT EXISTS idx_claims_tab ON claims(tab_id);
 `)
+
+// Add columns that may be missing on databases created by an earlier schema.
+function ensureColumn(table, column, type) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all()
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`)
+  }
+}
+ensureColumn('feedback', 'email', 'TEXT')
 
 export const q = {
   insertTab: db.prepare(`
@@ -103,7 +113,7 @@ export const q = {
   deleteClaim: db.prepare(`DELETE FROM claims WHERE item_id = ? AND participant_id = ?`),
 
   insertFeedback: db.prepare(`
-    INSERT INTO feedback (id, tab_id, message, created_at)
-    VALUES (@id, @tab_id, @message, @created_at)
+    INSERT INTO feedback (id, tab_id, message, email, created_at)
+    VALUES (@id, @tab_id, @message, @email, @created_at)
   `),
 }

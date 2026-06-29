@@ -31,7 +31,7 @@ export const api = {
   confirm: (id, pid, confirmed, creatorToken) =>
     req('POST', `/api/tabs/${id}/participants/${pid}/confirm`, { confirmed }, { 'x-creator-token': creatorToken }),
 
-  sendFeedback: (message, tabId) => req('POST', '/api/feedback', { message, tabId }),
+  sendFeedback: (message, email, tabId) => req('POST', '/api/feedback', { message, email, tabId }),
 }
 
 // ---- localStorage helpers --------------------------------------------------

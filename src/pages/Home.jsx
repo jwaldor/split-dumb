@@ -64,7 +64,7 @@ export default function Home() {
           />
         </div>
         <p className="mt-2 text-xs text-slate-400">
-          Remembered on this device, and saved with any tab you start — it's where people will pay you.
+          It's where people will pay you.
         </p>
         <button className="btn-primary mt-4 w-full" disabled={!venmo.trim() || starting} onClick={start}>
           {starting ? 'Starting…' : 'Start a new tab'}

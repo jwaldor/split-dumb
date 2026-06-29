@@ -6,6 +6,7 @@ import { api } from '../api.js'
 export default function Feedback({ tabId = null }) {
   const [open, setOpen] = useState(false)
   const [message, setMessage] = useState('')
+  const [email, setEmail] = useState('')
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState(false)
   const [error, setError] = useState(null)
@@ -15,9 +16,10 @@ export default function Feedback({ tabId = null }) {
     setSending(true)
     setError(null)
     try {
-      await api.sendFeedback(message.trim(), tabId)
+      await api.sendFeedback(message.trim(), email.trim(), tabId)
       setSent(true)
       setMessage('')
+      setEmail('')
     } catch (err) {
       setError(err.message)
     } finally {
@@ -48,6 +50,16 @@ export default function Feedback({ tabId = null }) {
             onChange={(e) => setMessage(e.target.value)}
             maxLength={2000}
             autoFocus
+          />
+          <input
+            type="email"
+            className="input mt-2"
+            placeholder="Email (optional)"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            maxLength={254}
+            autoCapitalize="off"
+            autoCorrect="off"
           />
           {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
           <div className="mt-3 flex items-center justify-end gap-2">
