@@ -224,6 +224,29 @@ app.delete('/api/tabs/:id/items/:itemId', asyncH((req, res) => {
   res.json(assembleTab(tab.id))
 }))
 
+// ---- feedback --------------------------------------------------------------
+
+// Anyone can leave a short note about the app. Optionally tied to the tab they
+// were looking at. Rate-limited per IP so it can't be spammed.
+const MAX_FEEDBACK_LEN = 2000
+
+app.post('/api/feedback', asyncH((req, res) => {
+  if (!rateLimit(`feedback:${req.ip}`, 10, 15 * 60 * 1000)) {
+    return res.status(429).json({ error: 'Thanks! Give it a few minutes before sending more.' })
+  }
+  const message = String(req.body?.message ?? '').trim()
+  if (!message) return res.status(400).json({ error: 'Feedback can’t be empty.' })
+
+  const tabId = req.body?.tabId ? String(req.body.tabId) : null
+  q.insertFeedback.run({
+    id: nanoid(12),
+    tab_id: tabId && q.getTab.get(tabId) ? tabId : null,
+    message: message.slice(0, MAX_FEEDBACK_LEN),
+    created_at: Date.now(),
+  })
+  res.json({ ok: true })
+}))
+
 // ---- participants ----------------------------------------------------------
 
 app.post('/api/tabs/:id/participants', asyncH((req, res) => {

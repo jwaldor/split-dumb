@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, getMyVenmo, setMyVenmo, setCreatorToken, getCreatedTabs } from '../api.js'
+import Feedback from '../components/Feedback.jsx'
 
 function formatWhen(ms) {
   return new Date(ms).toLocaleString(undefined, {
@@ -91,6 +92,8 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      <Feedback />
     </div>
   )
 }

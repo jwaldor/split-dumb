@@ -11,6 +11,7 @@ import { openVenmoPay } from '../lib/venmo.js'
 import { fileToDataUrl } from '../lib/image.js'
 import QrCode from '../components/QrCode.jsx'
 import FunFact from '../components/FunFact.jsx'
+import Feedback from '../components/Feedback.jsx'
 
 const FRACTIONS = [
   { label: '¼', value: 0.25 },
@@ -390,6 +391,8 @@ export default function TabView() {
       {isCreator && !editing && hasItems && (
         <CreatorPanel tab={tab} calc={calc} onConfirm={toggleConfirm} onSaveExtras={saveExtras} />
       )}
+
+      <Feedback tabId={id} />
     </div>
   )
 }

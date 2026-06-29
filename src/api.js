@@ -30,6 +30,8 @@ export const api = {
   setPaid: (id, pid, paid) => req('POST', `/api/tabs/${id}/participants/${pid}/paid`, { paid }),
   confirm: (id, pid, confirmed, creatorToken) =>
     req('POST', `/api/tabs/${id}/participants/${pid}/confirm`, { confirmed }, { 'x-creator-token': creatorToken }),
+
+  sendFeedback: (message, tabId) => req('POST', '/api/feedback', { message, tabId }),
 }
 
 // ---- localStorage helpers --------------------------------------------------

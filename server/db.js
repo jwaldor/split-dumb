@@ -50,6 +50,13 @@ db.exec(`
     UNIQUE(item_id, participant_id)
   );
 
+  CREATE TABLE IF NOT EXISTS feedback (
+    id         TEXT PRIMARY KEY,
+    tab_id     TEXT,
+    message    TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_items_tab ON items(tab_id);
   CREATE INDEX IF NOT EXISTS idx_participants_tab ON participants(tab_id);
   CREATE INDEX IF NOT EXISTS idx_claims_tab ON claims(tab_id);
@@ -94,4 +101,9 @@ export const q = {
     ON CONFLICT(item_id, participant_id) DO UPDATE SET share = @share
   `),
   deleteClaim: db.prepare(`DELETE FROM claims WHERE item_id = ? AND participant_id = ?`),
+
+  insertFeedback: db.prepare(`
+    INSERT INTO feedback (id, tab_id, message, created_at)
+    VALUES (@id, @tab_id, @message, @created_at)
+  `),
 }
