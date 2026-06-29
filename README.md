@@ -39,12 +39,17 @@ npm run build && npm start  # serves the built app + API on :3001
 
 ## Deploy on Railway
 
-- Create a service from this repo. Railway uses `railway.json`
-  (`npm run build` → `npm start`).
+The Railway service is connected to this GitHub repo, so **pushing to `main`
+auto-deploys** — no manual step. Railway uses `railway.json` (`npm run build` →
+`npm start`).
+
+First-time setup (already done for the live service):
+- Connect the service to the repo (Settings → Source), branch `main`.
 - Set env vars: `OPENROUTER_API_KEY`, optionally `OPENROUTER_MODEL`,
-  `PUBLIC_BASE_URL`.
-- Add a **Volume** and set `DATABASE_PATH` to a path on it (e.g.
-  `/data/splitdumb.db`) so tabs survive redeploys.
+  `PUBLIC_BASE_URL`, and `NIXPACKS_NODE_VERSION=22` (native `better-sqlite3`
+  needs Node 22).
+- Add a **Volume** mounted at `/data` and set `DATABASE_PATH=/data/splitdumb.db`
+  so tabs survive redeploys.
 
 ## Stack
 

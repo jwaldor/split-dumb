@@ -29,8 +29,11 @@ per-tab in their own localStorage.
   `OPENROUTER_MODEL` (default `openai/gpt-5.4-mini`). Mini was chosen over
   gpt-5.5 for speed — ~1.2s vs ~4s on a test receipt with identical accuracy.
   Claude vision was intentionally avoided here — too slow for snap-and-go.
-- **Hosting:** Railway. SQLite DB lives at `DATABASE_PATH` (point this at a
-  Railway volume so tabs survive redeploys).
+- **Hosting:** Railway, auto-deploying from GitHub (`jwaldor/split-dumb`, branch
+  `main`). **Push to `main` and Railway builds/deploys automatically** — no
+  `railway up` needed. SQLite DB lives at `DATABASE_PATH`, on a Railway volume
+  mounted at `/data` so tabs survive redeploys. Env vars + volume live on the
+  service and persist across deploys.
 
 ## Layout
 
