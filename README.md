@@ -11,15 +11,38 @@ claims their items (fully or partially) and Venmos the host.
    OpenRouter) reads it into line items + tax/tip. One receipt per tab; if the
    photo's no good it tells you why so you can retry. Then use **Edit / add
    items** to fix OCR mistakes or add anything by hand.
-4. Add a **tip** if the receipt didn't include one — it's split proportionally.
+4. Add a **tip**, and any **extra costs** the receipt tacks on (credit-card
+   surcharge, service charge, delivery) — both split proportionally. Edits save
+   as you type.
 5. Anyone scans the QR, enters their name, and **claims items** — quick fractions
-   (¼, ⅓, ½, Rest) or any custom %, capped at what's still unclaimed. Tax & tip
-   are split by what each person ordered.
+   (¼, ⅓, ½, Rest) or any custom %, capped at what's still unclaimed. Tax, tip
+   and extras are split by what each person ordered.
 6. Each person taps a **prefilled Venmo link** to pay the host, then marks paid.
 7. The **host confirms** each payment actually landed.
 
 No accounts. The host holds a secret token (in their browser) that lets them
-confirm payments and edit tax/tip.
+confirm payments and edit the tab.
+
+## Use it from Claude or ChatGPT
+
+SplitDumb is also an **MCP server**, so an assistant can run a whole tab for
+you — send it a photo of the receipt and it reads the items, builds the tab, and
+hands you the link to show the table.
+
+```bash
+# Claude Code
+/plugin marketplace add jwaldor/split-dumb
+/plugin install splitdumb@splitdumb
+```
+
+Claude desktop/web and ChatGPT (Developer mode) take the endpoint directly:
+`https://splitdumb-production.up.railway.app/mcp` — Streamable HTTP, no auth.
+
+There is no receipt-scanning *tool*: the assistant reads the photo itself and
+shows you the items before writing them, which keeps the app's paid OCR key
+unreachable from connectors. Full docs at
+[`/plugin`](https://splitdumb-production.up.railway.app/plugin) and in
+[`plugin/README.md`](plugin/README.md).
 
 ## Run locally
 
@@ -34,7 +57,8 @@ Open http://localhost:5173.
 Production-style run:
 
 ```bash
-npm run build && npm start  # serves the built app + API on :3001
+npm run build && npm start  # serves the built app + API + /mcp on :3001
+npm run smoke               # end-to-end test of the MCP tools against it
 ```
 
 ## Deploy on Railway

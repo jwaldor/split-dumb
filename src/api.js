@@ -22,8 +22,9 @@ export const api = {
     req('PATCH', `/api/tabs/${id}/items/${itemId}`, item, { 'x-creator-token': creatorToken }),
   removeItem: (id, itemId, creatorToken) =>
     req('DELETE', `/api/tabs/${id}/items/${itemId}`, null, { 'x-creator-token': creatorToken }),
-  updateExtras: (id, { tax, tip }, creatorToken) =>
-    req('PATCH', `/api/tabs/${id}`, { tax, tip }, { 'x-creator-token': creatorToken }),
+  // tax / tip / fees ("extra costs" — card surcharge, service charge, delivery)
+  updateExtras: (id, { tax, tip, fees }, creatorToken) =>
+    req('PATCH', `/api/tabs/${id}`, { tax, tip, fees }, { 'x-creator-token': creatorToken }),
 
   addParticipant: (id, payload) => req('POST', `/api/tabs/${id}/participants`, payload),
   setClaim: (id, payload) => req('PUT', `/api/tabs/${id}/claims`, payload),

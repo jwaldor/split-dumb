@@ -1,0 +1,13 @@
+{
+  "name": "splitdumb",
+  "version": "1.0.0",
+  "description": "Split a bill without anyone making an account. Read a receipt, build a shareable tab, and track who owes what and who's paid.",
+  "author": {
+    "name": "jwaldor",
+    "url": "https://github.com/jwaldor"
+  },
+  "homepage": "https://splitdumb-production.up.railway.app/plugin",
+  "repository": "https://github.com/jwaldor/split-dumb",
+  "license": "MIT",
+  "keywords": ["bills", "receipts", "venmo", "splitting", "money"]
+}

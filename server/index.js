@@ -3,9 +3,11 @@ import express from 'express'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import fs from 'node:fs'
-import { nanoid } from 'nanoid'
 import { db, q } from './db.js'
+import { nanoid } from 'nanoid'
 import { readReceipt } from './ocr.js'
+import { mountMcp } from './mcp.js'
+import * as core from './core.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const app = express()
@@ -16,53 +18,23 @@ const PORT = process.env.PORT || 3001
 
 // ---- helpers ---------------------------------------------------------------
 
-function assembleTab(id) {
-  const tab = q.getTab.get(id)
-  if (!tab) return null
-  const { creator_token, ...safe } = tab // never leak the creator token
-  return {
-    ...safe,
-    items: q.getItems.all(id),
-    participants: q.getParticipants.all(id),
-    claims: q.getClaims.all(id),
-  }
+// Business rules live in core.js so the REST API and the MCP tools behave
+// identically; these routes are a thin HTTP shell over it.
+
+// Run a handler, turning core's ApiError into the matching HTTP status.
+const route = (fn) => (req, res) => {
+  Promise.resolve(fn(req, res)).catch((err) => {
+    if (err instanceof core.ApiError) return res.status(err.status).json({ error: err.message })
+    console.error(err)
+    res.status(500).json({ error: err.message || 'Server error' })
+  })
 }
 
-// Look up the tab named in the route; send a 404 and return null if missing.
-function loadTab(req, res) {
-  const tab = q.getTab.get(req.params.id)
-  if (!tab) {
-    res.status(404).json({ error: 'Tab not found.' })
-    return null
-  }
-  return tab
-}
+// Load the tab named in the route, or 404.
+const tabOf = (req) => core.requireTab(req.params.id)
 
-const normalizeVenmo = (v) => String(v || '').replace(/^@/, '').trim()
-
-// Once anyone has marked themselves paid, items are frozen — editing them would
-// change what an already-paid person owes.
-function requireItemsUnlocked(req, res, tab) {
-  if (q.countPaid.get(tab.id).n > 0) {
-    res.status(409).json({ error: 'Someone already marked themselves paid — items are locked.' })
-    return false
-  }
-  return true
-}
-
-function requireCreator(req, res, tab) {
-  const token = req.get('x-creator-token')
-  if (!token || token !== tab.creator_token) {
-    res.status(403).json({ error: 'Only the tab creator can do that.' })
-    return false
-  }
-  return true
-}
-
-const asyncH = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch((err) => {
-  console.error(err)
-  res.status(500).json({ error: err.message || 'Server error' })
-})
+// Load the tab and check the caller holds its creator token.
+const creatorTabOf = (req) => core.requireCreator(tabOf(req), req.get('x-creator-token'))
 
 // ---- rate limiting (in-memory) --------------------------------------------
 // Protects the paid OCR endpoint from abuse. In-memory is fine for a single
@@ -94,44 +66,25 @@ function scanRateLimit(req, res, next) {
 
 // ---- tabs ------------------------------------------------------------------
 
-// Create an empty tab. Items are NOT accepted here — they can only come from
-// scanning a receipt (POST /api/tabs/:id/scan).
-app.post('/api/tabs', asyncH((req, res) => {
-  const { creatorVenmo } = req.body || {}
-  if (!creatorVenmo || typeof creatorVenmo !== 'string') {
-    return res.status(400).json({ error: 'creatorVenmo is required.' })
-  }
-  const handle = normalizeVenmo(creatorVenmo)
-  if (!handle) {
-    return res.status(400).json({ error: 'Enter a valid Venmo handle.' })
-  }
-  const id = nanoid(8)
-  const creatorToken = nanoid(24)
-  q.insertTab.run({
-    id,
-    creator_token: creatorToken,
-    creator_venmo: handle,
-    merchant: null,
-    currency: 'USD',
-    tax: 0,
-    tip: 0,
-    created_at: Date.now(),
-  })
+// Create an empty tab. The web UI never sends items here — they come from
+// scanning a receipt. (MCP clients seed items at creation instead; see mcp.js.)
+app.post('/api/tabs', route((req, res) => {
+  const { id, creatorToken } = core.createTab({ creatorVenmo: req.body?.creatorVenmo })
   res.json({ id, creatorToken })
 }))
 
-app.get('/api/tabs/:id', asyncH((req, res) => {
-  const tab = assembleTab(req.params.id)
-  if (!tab) return res.status(404).json({ error: 'Tab not found.' })
-  res.json(tab)
+app.get('/api/tabs/:id', route((req, res) => {
+  res.json(core.assembleTab(tabOf(req).id))
 }))
 
 // Scan a receipt INTO this tab. Creator-only + rate-limited. The OCR'd items
 // are appended, and any tax/tip the receipt lists is added to the tab's totals.
-app.post('/api/tabs/:id/scan', scanRateLimit, asyncH(async (req, res) => {
-  const tab = loadTab(req, res)
-  if (!tab) return
-  if (!requireCreator(req, res, tab)) return
+//
+// This is the web UI's path only. It is deliberately NOT exposed over MCP —
+// an MCP client is a vision model itself and should read the photo directly,
+// which keeps the paid OpenRouter key unreachable from connectors.
+app.post('/api/tabs/:id/scan', scanRateLimit, route(async (req, res) => {
+  const tab = creatorTabOf(req)
 
   const { image } = req.body || {}
   if (!image || typeof image !== 'string' || !image.startsWith('data:image/')) {
@@ -145,7 +98,7 @@ app.post('/api/tabs/:id/scan', scanRateLimit, asyncH(async (req, res) => {
   const result = await readReceipt(image)
 
   const startPos = q.countItems.get(tab.id).n
-  const apply = db.transaction(() => {
+  db.transaction(() => {
     result.items.forEach((it, i) => {
       q.insertItem.run({
         id: nanoid(10),
@@ -159,146 +112,83 @@ app.post('/api/tabs/:id/scan', scanRateLimit, asyncH(async (req, res) => {
       id: tab.id,
       tax: (Number(tab.tax) || 0) + (Number(result.tax) || 0),
       tip: (Number(tab.tip) || 0) + (Number(result.tip) || 0),
+      fees: Number(tab.fees) || 0,
     })
     // Fill in merchant/currency from the first scan that has them.
     q.setMeta.run({
       id: tab.id,
       merchant: tab.merchant || result.merchant || null,
       currency: tab.merchant ? tab.currency : result.currency || tab.currency || 'USD',
+      creator_venmo: tab.creator_venmo,
     })
-  })
-  apply()
+  })()
 
-  res.json({ ok: result.ok, issue: result.issue, tab: assembleTab(tab.id) })
+  res.json({ ok: result.ok, issue: result.issue, tab: core.assembleTab(tab.id) })
 }))
 
-// Creator edits tax/tip (e.g. adding a tip the receipt photo didn't show).
-app.patch('/api/tabs/:id', asyncH((req, res) => {
-  const tab = loadTab(req, res)
-  if (!tab) return
-  if (!requireCreator(req, res, tab)) return
-  const tax = req.body?.tax != null ? Number(req.body.tax) || 0 : tab.tax
-  const tip = req.body?.tip != null ? Number(req.body.tip) || 0 : tab.tip
-  q.updateTabExtras.run({ id: tab.id, tax, tip })
-  res.json(assembleTab(tab.id))
+// Creator edits tax / tip / extra costs (card fees, service charge, delivery).
+app.patch('/api/tabs/:id', route((req, res) => {
+  res.json(core.updateTab(creatorTabOf(req), req.body || {}))
 }))
 
 // Creator adds an item by hand (to fix what the scan missed).
-app.post('/api/tabs/:id/items', asyncH((req, res) => {
-  const tab = loadTab(req, res)
-  if (!tab) return
-  if (!requireCreator(req, res, tab)) return
-  if (!requireItemsUnlocked(req, res, tab)) return
-  q.insertItem.run({
-    id: nanoid(10),
-    tab_id: tab.id,
-    name: String(req.body?.name ?? '').trim() || 'Item',
-    price: Number(req.body?.price) || 0,
-    position: q.countItems.get(tab.id).n,
-  })
-  res.json(assembleTab(tab.id))
+app.post('/api/tabs/:id/items', route((req, res) => {
+  const tab = creatorTabOf(req)
+  core.addItems(tab, [{ name: req.body?.name, price: req.body?.price }])
+  res.json(core.assembleTab(tab.id))
 }))
 
 // Creator edits an item's name/price (to fix an OCR mistake).
-app.patch('/api/tabs/:id/items/:itemId', asyncH((req, res) => {
-  const tab = loadTab(req, res)
-  if (!tab) return
-  if (!requireCreator(req, res, tab)) return
-  if (!requireItemsUnlocked(req, res, tab)) return
-  q.updateItem.run({
-    id: req.params.itemId,
-    tab_id: tab.id,
-    name: String(req.body?.name ?? '').trim() || 'Item',
-    price: Number(req.body?.price) || 0,
-  })
-  res.json(assembleTab(tab.id))
+app.patch('/api/tabs/:id/items/:itemId', route((req, res) => {
+  res.json(core.updateItem(creatorTabOf(req), req.params.itemId, req.body || {}))
 }))
 
 // Creator removes a (mis-scanned) item. Claims on it cascade-delete via FK.
-app.delete('/api/tabs/:id/items/:itemId', asyncH((req, res) => {
-  const tab = loadTab(req, res)
-  if (!tab) return
-  if (!requireCreator(req, res, tab)) return
-  if (!requireItemsUnlocked(req, res, tab)) return
-  q.deleteItem.run(req.params.itemId, tab.id)
-  res.json(assembleTab(tab.id))
+app.delete('/api/tabs/:id/items/:itemId', route((req, res) => {
+  res.json(core.removeItem(creatorTabOf(req), req.params.itemId))
 }))
 
 // ---- participants ----------------------------------------------------------
 
-app.post('/api/tabs/:id/participants', asyncH((req, res) => {
-  const tab = loadTab(req, res)
-  if (!tab) return
-  const { name, venmo } = req.body || {}
-  if (!name || !String(name).trim()) return res.status(400).json({ error: 'Name is required.' })
-  const id = nanoid(10)
-  q.insertParticipant.run({
-    id,
-    tab_id: tab.id,
-    name: String(name).trim(),
-    venmo: venmo ? normalizeVenmo(venmo) || null : null,
-    created_at: Date.now(),
-  })
+app.post('/api/tabs/:id/participants', route((req, res) => {
+  const { id } = core.addParticipant(tabOf(req), req.body || {})
   res.json({ id })
 }))
 
 // Participant marks themselves paid / un-paid.
-app.post('/api/tabs/:id/participants/:pid/paid', asyncH((req, res) => {
-  const tab = loadTab(req, res)
-  if (!tab) return
-  const participant = q.getParticipant.get(req.params.pid, tab.id)
-  if (!participant) return res.status(404).json({ error: 'Participant not found.' })
-  const paid = req.body?.paid ? 1 : 0
-  q.setPaid.run({ id: participant.id, tab_id: tab.id, paid })
-  res.json({ ok: true, paid })
+app.post('/api/tabs/:id/participants/:pid/paid', route((req, res) => {
+  core.setPaid(tabOf(req), req.params.pid, !!req.body?.paid)
+  res.json({ ok: true, paid: req.body?.paid ? 1 : 0 })
 }))
 
 // Creator confirms a payment actually landed.
-app.post('/api/tabs/:id/participants/:pid/confirm', asyncH((req, res) => {
-  const tab = loadTab(req, res)
-  if (!tab) return
-  if (!requireCreator(req, res, tab)) return
-  const participant = q.getParticipant.get(req.params.pid, tab.id)
-  if (!participant) return res.status(404).json({ error: 'Participant not found.' })
-  const confirmed = req.body?.confirmed ? 1 : 0
-  q.setConfirmed.run({ id: participant.id, tab_id: tab.id, confirmed })
-  res.json({ ok: true, confirmed })
+app.post('/api/tabs/:id/participants/:pid/confirm', route((req, res) => {
+  core.setConfirmed(creatorTabOf(req), req.params.pid, !!req.body?.confirmed)
+  res.json({ ok: true, confirmed: req.body?.confirmed ? 1 : 0 })
 }))
 
 // ---- claims ----------------------------------------------------------------
 
 // Upsert a participant's fractional claim on an item. share <= 0 removes it.
-app.put('/api/tabs/:id/claims', asyncH((req, res) => {
-  const tab = loadTab(req, res)
-  if (!tab) return
+// You can only claim the portion of an item that's still unclaimed, so total
+// coverage can never exceed 100% (no double-billing).
+app.put('/api/tabs/:id/claims', route((req, res) => {
+  const tab = tabOf(req)
   const { participantId, itemId, share } = req.body || {}
-  const participant = q.getParticipant.get(participantId, tab.id)
-  if (!participant) return res.status(400).json({ error: 'Unknown participant.' })
-  const s = Number(share)
-  if (!Number.isFinite(s)) return res.status(400).json({ error: 'share must be a number.' })
-
-  if (s <= 0) {
-    q.deleteClaim.run(itemId, participantId)
-  } else {
-    // You can only claim the portion of an item that's still unclaimed, so
-    // total coverage can never exceed 100% (no double-billing).
-    const others = q.sumOtherShares.get(itemId, participantId).s
-    const available = Math.max(0, 1 - others)
-    const finalShare = Math.min(s, available)
-    if (finalShare <= 0) {
-      q.deleteClaim.run(itemId, participantId)
-    } else {
-      q.upsertClaim.run({
-        id: nanoid(10),
-        tab_id: tab.id,
-        item_id: itemId,
-        participant_id: participantId,
-        share: finalShare,
-      })
-    }
+  try {
+    core.setClaim(tab, { participantId, itemId, share })
+  } catch (err) {
+    // "Already fully claimed" is a no-op from the UI's point of view — it just
+    // re-renders with the current coverage.
+    if (!(err instanceof core.ApiError && err.status === 409)) throw err
   }
-  res.json(assembleTab(tab.id))
+  res.json(core.assembleTab(tab.id))
 }))
+
+// ---- MCP -------------------------------------------------------------------
+
+// The whole app as tools, for Claude / ChatGPT / any MCP client.
+mountMcp(app, '/mcp')
 
 // ---- static frontend (production) -----------------------------------------
 
@@ -313,4 +203,5 @@ if (fs.existsSync(distDir)) {
 
 app.listen(PORT, () => {
   console.log(`SplitDumb server listening on :${PORT}`)
+  console.log(`MCP endpoint at :${PORT}/mcp`)
 })

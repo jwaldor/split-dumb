@@ -1,0 +1,19 @@
+{
+  "name": "splitdumb",
+  "owner": {
+    "name": "jwaldor",
+    "url": "https://github.com/jwaldor"
+  },
+  "metadata": {
+    "description": "SplitDumb — account-free bill splitting",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "splitdumb",
+      "source": "./plugin",
+      "description": "Split a bill without anyone making an account. Read a receipt, build a shareable tab, and track who owes what and who's paid.",
+      "category": "productivity"
+    }
+  ]
+}
