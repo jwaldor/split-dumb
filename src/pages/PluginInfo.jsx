@@ -56,7 +56,7 @@ const TOOLS = [
   ['assign_items', 'Give someone items — whole or a fraction'],
   ['split_evenly', 'Even split across everyone'],
   ['get_payment_link', 'Prefilled Venmo link for one person’s total'],
-  ['mark_paid / confirm_payment', 'Track who paid and what actually landed'],
+  ['mark_paid / confirm_payment', 'Record who says they’ve paid, and what you’ve confirmed'],
   ['delete_tab', 'Delete a tab and everything on it'],
 ]
 
@@ -85,7 +85,7 @@ export default function PluginInfo() {
         <p className="mt-2 text-sm text-slate-600">
           SplitDumb exposes itself as an <strong>MCP server</strong> — a small set of tools any
           MCP-speaking assistant can call. Connect it once and your assistant can create tabs, fix
-          items, split things, and check who’s paid, on your behalf.
+          items, split things, and check where everyone’s at, on your behalf.
         </p>
         <p className="mt-3 text-sm text-slate-600">
           <strong>The assistant reads the receipt itself.</strong> There’s no scanning tool in the
@@ -161,8 +161,8 @@ export default function PluginInfo() {
           </Step>
           <Step n="5" title="Let it do the chasing">
             If your assistant can schedule things, it’ll offer to watch the tab — a daily update, a
-            nudge only if payments stall, or one ping when everyone’s settled. Pick whichever, or
-            just ask whenever you feel like it.
+            nudge only if people stop marking themselves paid, or one ping when everyone has. Pick
+            whichever, or just ask whenever you feel like it.
           </Step>
         </ol>
       </div>
@@ -182,6 +182,20 @@ export default function PluginInfo() {
           Reading a tab needs nothing but its id — that’s the shared link. Host actions (editing
           items, changing tax and tip, confirming payments, deleting) require the creator token
           handed out when the tab is made.
+        </p>
+      </div>
+
+      <div className="card mt-4 border-amber-200 bg-amber-50 p-5">
+        <h2 className="font-bold text-amber-900">It can’t see your Venmo</h2>
+        <p className="mt-2 text-sm text-amber-800">
+          SplitDumb isn’t connected to Venmo and never sees an actual transaction. “Paid” means
+          someone <em>tapped a button</em> saying they paid; “confirmed” means <em>you</em> ticked
+          it off, presumably after checking your own account. Both are people’s word.
+        </p>
+        <p className="mt-2 text-sm text-amber-800">
+          So your assistant can tell you who has marked themselves paid — it cannot tell you whether
+          the money actually arrived. For that, check Venmo. The tools and the skill are written to
+          keep that distinction, and to say “Sam marked themselves paid” rather than “Sam paid you.”
         </p>
       </div>
 

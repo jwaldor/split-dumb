@@ -361,5 +361,13 @@ export function summarize(tabId, { baseUrl } = {}) {
       saysPaid: !!p.paid,
       hostConfirmed: !!p.confirmed,
     })),
+    // Travels with the data on purpose: a model reading this in a scheduled run
+    // days later has no other context, and "everyone's paid" is a costly thing
+    // to say when what happened is "everyone tapped a button".
+    paymentStatusCaveat:
+      'SplitDumb has no Venmo integration and never observes a real transaction. `saysPaid` is ' +
+      'the payer tapping a button; `hostConfirmed` is the host ticking one, presumably after ' +
+      'checking their own Venmo. Both are self-reported. Report them as "marked themselves ' +
+      'paid" / "the host confirmed", never as proof that money moved.',
   }
 }

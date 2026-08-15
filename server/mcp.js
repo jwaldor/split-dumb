@@ -48,17 +48,27 @@ changing tax/tip/extra costs, confirming payments, deleting the tab). Keep it in
 the conversation and pass it on every host call. Anyone with just the tabId can
 read the tab and claim items, which is the point — that's the shared link.
 
+CRITICAL — SplitDumb cannot tell whether anyone actually paid. There is no
+Venmo integration; nothing here ever observes a real transaction. Both payment
+flags are just button presses: saysPaid means the payer tapped "mark as paid"
+(possibly premature, mistaken or untrue), and hostConfirmed means the host
+ticked "got it", presumably after checking their own Venmo — a human's word,
+not a verified receipt. Never state that money moved. Say "Sam has marked
+themselves paid", not "Sam paid you"; say "you've confirmed $48 of $71", not
+"$48 has been collected". If the user needs certainty, tell them to check Venmo.
+
 If you can schedule recurring work, offer once — after the tab is set up — to
-keep an eye on it, and keep the menu short: (a) a daily update on what's come in
-and who's still out, (b) quiet unless it stalls, nudging if nobody new has paid
-for a couple of days, or (c) a single ping when everyone has paid. Default to
-(a) if they just say yes. Put the tabId in the scheduled task's own instructions
-(it starts with no memory of this conversation), keep it read-only — get_tab
-needs no token, so never put the creatorToken in a scheduled job — and stop,
-saying so, once the tab is settled. Each person has saysPaid (their own claim)
-and hostConfirmed (the money arrived); don't treat unconfirmed as unpaid. If you
-cannot schedule anything, say the user can ask any time instead of promising to
-check back.`
+keep an eye on it, and keep the menu short: (a) a daily update on who has marked
+themselves paid and who hasn't, (b) quiet unless it stalls, nudging if nobody
+new has marked themselves paid for a couple of days, or (c) a single ping when
+everyone has marked themselves paid. Say up front that you can only see what
+people tick in the app. Default to (a) if they just say yes. Put the tabId in
+the scheduled task's own instructions (it starts with no memory of this
+conversation), keep it read-only — get_tab needs no token, so never put the
+creatorToken in a scheduled job — and stop, saying so, once the tab is settled.
+Word scheduled updates especially carefully: the user reads them later without
+you there to qualify anything. If you cannot schedule anything, say the user can
+ask any time instead of promising to check back.`
 
 // ---- tool helpers ----------------------------------------------------------
 
@@ -164,7 +174,9 @@ export function buildMcpServer({ baseUrl }) {
       title: 'Get a tab',
       description:
         'Read the full current state of a tab: items, who claimed what, and exactly what each ' +
-        'person owes including their share of tax, tip and extra costs. No token needed.',
+        'person owes including their share of tax, tip and extra costs. No token needed. ' +
+        'Note `saysPaid` and `hostConfirmed` are self-reported button presses, not verified ' +
+        'payments — see `paymentStatusCaveat` in the response.',
       inputSchema: { tabId },
       annotations: { title: 'Get a tab', readOnlyHint: true },
     },
@@ -457,8 +469,10 @@ export function buildMcpServer({ baseUrl }) {
     {
       title: 'Mark someone paid',
       description:
-        'Mark that a person says they have paid. This is the payer\'s own claim — it also ' +
-        'freezes the tab\'s items, since editing them would change what an already-paid person owes.',
+        'Record that a person SAYS they have paid. This is the payer\'s own unverified claim — ' +
+        'SplitDumb never sees the actual Venmo transaction — so report it as "marked themselves ' +
+        'paid", never as "paid". It also freezes the tab\'s items, since editing them would ' +
+        'change what an already-paid person owes.',
       inputSchema: { tabId, person: z.string(), paid: z.boolean().optional().describe('Defaults to true.') },
       annotations: { title: 'Mark paid', readOnlyHint: false, destructiveHint: false },
     },
@@ -472,7 +486,10 @@ export function buildMcpServer({ baseUrl }) {
     'confirm_payment',
     {
       title: 'Confirm a payment landed',
-      description: 'Host-only: confirm the money actually arrived for one person.',
+      description:
+        'Host-only: record that the host believes this person\'s payment arrived. The host is ' +
+        'asserting it (presumably after checking Venmo themselves) — nothing here verifies a ' +
+        'transaction, so this is the host\'s word, not proof.',
       inputSchema: {
         tabId,
         creatorToken,

@@ -94,7 +94,35 @@ yourself; read it off.
 Send those once claims are final.
 
 `mark_paid` records that someone says they paid; `confirm_payment` (host only)
-records that the money actually landed.
+records that the host believes it landed. Read the next section before you
+report either as fact.
+
+## SplitDumb cannot tell whether anyone actually paid
+
+There is **no Venmo integration**. Nothing in this system ever observes a real
+transaction. Both payment flags are just people pressing buttons:
+
+| Field | What it actually means |
+|---|---|
+| `saysPaid` | The payer tapped "Mark as paid" in the app. It may be honest, mistaken, premature (the Venmo link opens and marks them paid whether or not they finish), or a lie. |
+| `hostConfirmed` | The **host** ticked "Got it" — presumably after looking at their own Venmo. It's a human's word, recorded in an app, not a verified receipt. |
+
+So never state that money moved. Report the record, not the reality:
+
+- ✅ "Sam has marked themselves paid. You haven't confirmed it yet."
+- ✅ "You've confirmed $48 of the $71 — Priya and Jo haven't marked themselves
+  paid at all."
+- ❌ "Sam paid you $12."
+- ❌ "$48 has been collected." / "$48 is in your account."
+
+The gap between the two flags is exactly where problems hide — someone who
+marked themselves paid but whom the host never confirmed is the case worth
+surfacing, not smoothing over. Say plainly that it's unverified, and if the
+user needs to know for certain, the answer is always the same: **check Venmo.**
+
+This is not pedantry. A user reading "everyone's paid" and closing the tab,
+when what happened is "everyone tapped a button", is the way this app loses
+someone real money.
 
 ## Offer to keep an eye on it
 
@@ -106,12 +134,15 @@ gives you), offer to watch the tab once it's live and people are on it.
 Offer it *once*, right after the tab is set up, and keep the menu short:
 
 > Want me to keep an eye on this? I can:
-> **a)** send you a daily update — how much has come in, who's still out;
-> **b)** stay quiet unless it stalls — I'll nudge you if nobody new has paid for
-> a couple of days;
-> **c)** ping you once, when everyone's paid.
+> **a)** send you a daily update — who's marked themselves paid, who hasn't;
+> **b)** stay quiet unless it stalls — I'll nudge you if nobody new has marked
+> themselves paid for a couple of days;
+> **c)** ping you once, when everyone has marked themselves paid.
 >
 > Or nothing at all, and you just ask me whenever.
+>
+> (I can only see what people tick in the app — I can't see your Venmo, so
+> you'll still want to check that the money actually arrived.)
 
 If they pick one, schedule a task that calls `get_tab` with the tab id and
 reports against that rule. **(a)** is the safe default if they say "yes" without
@@ -128,12 +159,13 @@ Three things make this work properly:
   stopped. A reminder about a bill that closed last week is worse than no
   reminder.
 
-What to read off `get_tab`: each person has `saysPaid` (they claim they paid)
-and `hostConfirmed` (the host says the money arrived). "Everyone's paid" means
-every person has `saysPaid` — mention any still waiting on `hostConfirmed`, but
-don't treat unconfirmed as unpaid. `unclaimedSubtotal` above zero means people
-still haven't claimed their items, which is a different problem worth flagging
-in the same update.
+Word every recurring update as a record of button presses, per the section
+above — a scheduled message saying "everyone's paid" that the user reads on
+their phone days later, without you there to qualify it, is the worst place to
+be sloppy about this. "Everyone has marked themselves paid" is the honest
+version, and it's worth adding which of those the host hasn't confirmed yet.
+`unclaimedSubtotal` above zero means people still haven't claimed their items,
+which is a different problem worth flagging in the same update.
 
 If you *can't* schedule anything, don't fake it — no "I'll check back tomorrow."
 Say the user can ask any time and you'll pull the current state.
@@ -202,5 +234,5 @@ be stale.
 | `assign_items` | no | Give someone items at a share of 0–1 |
 | `split_evenly` | no | Replace all claims with an even split |
 | `get_payment_link` | no | Prefilled Venmo link for what one person owes |
-| `mark_paid` | no | Payer says they've paid (freezes items) |
-| `confirm_payment` | yes | Host confirms the money arrived |
+| `mark_paid` | no | Payer *says* they've paid (freezes items) |
+| `confirm_payment` | yes | Host *says* it landed — still not verified by anything |
