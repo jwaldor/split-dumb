@@ -18,12 +18,29 @@ const FRACTIONS = [
   { label: '½', value: 0.5 },
 ]
 
+// Name only the add-ons this tab actually has, so a tab with no card fee never
+// says "extras" — "tax & tip", "tax, tip & extras", "tip & extras"…
+function extrasLabel(tab) {
+  const parts = []
+  if (Number(tab.tax)) parts.push('tax')
+  if (Number(tab.tip)) parts.push('tip')
+  if (Number(tab.fees)) parts.push('extras')
+  if (parts.length === 0) return 'tax & tip'
+  if (parts.length === 1) return parts[0]
+  return `${parts.slice(0, -1).join(', ')} & ${parts[parts.length - 1]}`
+}
+
+const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1)
+
 export default function TabView() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [tab, setTab] = useState(null)
   const [error, setError] = useState(null)
-  const [showShare, setShowShare] = useState(false)
+  // null = untouched (defaults open for the host), true/false = explicitly
+  // toggled. The host's QR stays up for the whole tab — people trickle in and
+  // re-scan — so only a deliberate "Hide invite" closes it.
+  const [showShare, setShowShare] = useState(null)
   const [scanning, setScanning] = useState(false)
   const [scanIssue, setScanIssue] = useState(null)
   const [editing, setEditing] = useState(false)
@@ -83,6 +100,9 @@ export default function TabView() {
   const me = tab.participants.find((p) => p.id === meId) || null
   const hasItems = tab.items.length > 0
   const anyPaid = tab.participants.some((p) => p.paid) // items freeze once anyone pays
+  // Open by default for the host once there's something to join; guests see it
+  // only if they ask for it.
+  const inviteOpen = showShare ?? (isCreator && hasItems)
 
   async function onScan(e) {
     const file = e.target.files?.[0]
@@ -167,16 +187,19 @@ export default function TabView() {
     refresh()
   }
 
-  async function saveExtras(tax, tip) {
-    applyTab(await api.updateExtras(id, { tax, tip }, creatorToken))
+  async function saveExtras({ tax, tip, fees }) {
+    applyTab(await api.updateExtras(id, { tax, tip, fees }, creatorToken))
   }
 
   return (
     <div className="mx-auto max-w-md px-5 py-6">
       <div className="flex items-center justify-between">
         <button onClick={() => navigate('/')} className="text-sm text-slate-400">← Home</button>
-        <button onClick={() => setShowShare((s) => !s)} className="text-sm font-semibold text-venmo">
-          {showShare ? 'Hide invite' : 'Invite people'}
+        <button
+          onClick={() => setShowShare(!inviteOpen)}
+          className="text-sm font-semibold text-venmo"
+        >
+          {inviteOpen ? 'Hide invite' : 'Invite people'}
         </button>
       </div>
 
@@ -186,7 +209,7 @@ export default function TabView() {
         {hasItems ? <> · {money(calc.receiptTotal, tab.currency)} total</> : null}
       </p>
 
-      {(showShare || (isCreator && hasItems && tab.participants.length === 0)) && (
+      {inviteOpen && (
         <div className="card mt-4 flex flex-col items-center p-5">
           <QrCode value={shareUrl} />
           <p className="mt-3 text-center text-xs text-slate-400">Scan to hop on the tab</p>
@@ -367,7 +390,7 @@ export default function TabView() {
 
       {hasItems && !editing && calc.extras > 0 && (
         <p className="mt-3 text-center text-xs text-slate-400">
-          + {money(calc.extras, tab.currency)} tax & tip, split by what you ordered
+          + {money(calc.extras, tab.currency)} {extrasLabel(tab)}, split by what you ordered
         </p>
       )}
       {hasItems && !editing && calc.unclaimedSubtotal > 0.01 && (
@@ -498,7 +521,7 @@ function MyTotal({ me, tab, isCreator, onTogglePaid }) {
       <h2 className="font-bold">You owe</h2>
       <div className="mt-2 space-y-1 text-sm text-slate-500">
         <Row label="Your items" value={money(me.subtotal, tab.currency)} />
-        <Row label="Tax & tip share" value={money(me.extras, tab.currency)} />
+        <Row label={`${capitalize(extrasLabel(tab))} share`} value={money(me.extras, tab.currency)} />
       </div>
       <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2 text-xl font-black">
         <span>Total</span>
@@ -537,49 +560,135 @@ function MyTotal({ me, tab, isCreator, onTogglePaid }) {
   )
 }
 
-function CreatorPanel({ tab, calc, onConfirm, onSaveExtras }) {
-  const [tax, setTax] = useState(String(tab.tax || ''))
-  const [tip, setTip] = useState(String(tab.tip || ''))
-  const [savedMsg, setSavedMsg] = useState('')
+// Tax / tip / extra costs. Every keystroke saves — no button to press. The
+// write is debounced so typing "12.50" is one request, not five.
+const SAVE_DEBOUNCE_MS = 500
 
+function ExtrasEditor({ tab, calc, onSaveExtras }) {
+  const [draft, setDraft] = useState({
+    tax: String(tab.tax || ''),
+    tip: String(tab.tip || ''),
+    fees: String(tab.fees || ''),
+  })
+  const [status, setStatus] = useState('') // '', 'saving', 'saved', or an error
+  const timer = useRef(null)
+  const pending = useRef(false)
+
+  // Adopt changes made elsewhere (another device, or an MCP client) — but never
+  // while we have an edit in flight, or we'd yank the field out from under the
+  // person typing in it.
+  useEffect(() => {
+    if (pending.current) return
+    setDraft({
+      tax: String(tab.tax || ''),
+      tip: String(tab.tip || ''),
+      fees: String(tab.fees || ''),
+    })
+  }, [tab.tax, tab.tip, tab.fees])
+
+  const save = useCallback(
+    async (next) => {
+      setStatus('saving')
+      try {
+        await onSaveExtras({
+          tax: parseFloat(next.tax) || 0,
+          tip: parseFloat(next.tip) || 0,
+          fees: parseFloat(next.fees) || 0,
+        })
+        pending.current = false
+        setStatus('saved')
+        setTimeout(() => setStatus((s) => (s === 'saved' ? '' : s)), 1200)
+      } catch (err) {
+        pending.current = false
+        setStatus(err.message)
+      }
+    },
+    [onSaveExtras],
+  )
+
+  // `flush` skips the debounce — used by the tip % buttons, where there's no
+  // more typing coming.
+  const edit = useCallback(
+    (field, value, { flush = false } = {}) => {
+      const next = { ...draft, [field]: value }
+      setDraft(next)
+      pending.current = true
+      clearTimeout(timer.current)
+      if (flush) save(next)
+      else timer.current = setTimeout(() => save(next), SAVE_DEBOUNCE_MS)
+    },
+    [draft, save],
+  )
+
+  // Don't strand an unsaved keystroke if the host navigates away mid-edit.
+  useEffect(() => () => clearTimeout(timer.current), [])
+
+  const fields = [
+    { key: 'tax', label: 'Tax' },
+    { key: 'tip', label: 'Tip' },
+    { key: 'fees', label: 'Extra costs', hint: 'Card fee, service charge, delivery…' },
+  ]
+
+  return (
+    <div className="card mt-2 p-5">
+      {fields.map((f, i) => (
+        <div key={f.key} className={i === 0 ? '' : 'mt-2'}>
+          <div className="flex items-center justify-between gap-3">
+            <label htmlFor={`extras-${f.key}`} className="text-sm font-semibold text-slate-600">
+              {f.label}
+            </label>
+            <input
+              id={`extras-${f.key}`}
+              className="input w-28 text-right"
+              inputMode="decimal"
+              placeholder="0.00"
+              value={draft[f.key]}
+              onChange={(e) => edit(f.key, e.target.value)}
+              onBlur={(e) => edit(f.key, e.target.value, { flush: true })}
+            />
+          </div>
+          {f.hint && <p className="mt-0.5 text-[11px] text-slate-400">{f.hint}</p>}
+        </div>
+      ))}
+
+      <div className="mt-3 flex gap-2">
+        {[15, 18, 20, 25].map((p) => (
+          <button
+            key={p}
+            onClick={() => edit('tip', String(round((calc.receiptSubtotal * p) / 100)), { flush: true })}
+            className="btn-ghost flex-1 px-0 text-sm"
+          >
+            {p}%
+          </button>
+        ))}
+      </div>
+
+      <p className="mt-3 flex items-center justify-between text-[11px] text-slate-400">
+        <span>Tip % is calculated on the pre-tax subtotal.</span>
+        <span
+          className={
+            status === 'saved'
+              ? 'font-semibold text-green-600'
+              : status && status !== 'saving'
+                ? 'font-semibold text-red-600'
+                : ''
+          }
+        >
+          {status === 'saving' ? 'Saving…' : status === 'saved' ? '✓ Saved' : status}
+        </span>
+      </p>
+    </div>
+  )
+}
+
+function CreatorPanel({ tab, calc, onConfirm, onSaveExtras }) {
   const collected = calc.perParticipant.filter((p) => p.confirmed).reduce((s, p) => s + p.total, 0)
 
   return (
     <div className="mt-6">
       <h2 className="text-sm font-bold uppercase tracking-wide text-slate-400">Host tools</h2>
 
-      <div className="card mt-2 p-5">
-        <div className="flex items-center justify-between gap-3">
-          <label className="text-sm font-semibold text-slate-600">Tax</label>
-          <input className="input w-28 text-right" inputMode="decimal" value={tax} onChange={(e) => setTax(e.target.value)} />
-        </div>
-        <div className="mt-2 flex items-center justify-between gap-3">
-          <label className="text-sm font-semibold text-slate-600">Tip</label>
-          <input className="input w-28 text-right" inputMode="decimal" value={tip} onChange={(e) => setTip(e.target.value)} />
-        </div>
-        <div className="mt-3 flex gap-2">
-          {[15, 18, 20, 25].map((p) => (
-            <button
-              key={p}
-              onClick={() => setTip(String(round((calc.receiptSubtotal * p) / 100)))}
-              className="btn-ghost flex-1 px-0 text-sm"
-            >
-              {p}%
-            </button>
-          ))}
-        </div>
-        <button
-          className="btn-ghost mt-3 w-full text-sm"
-          onClick={async () => {
-            await onSaveExtras(parseFloat(tax) || 0, parseFloat(tip) || 0)
-            setSavedMsg('Saved')
-            setTimeout(() => setSavedMsg(''), 1500)
-          }}
-        >
-          {savedMsg || 'Update tax & tip'}
-        </button>
-        <p className="mt-2 text-[11px] text-slate-400">Tip % is calculated on the pre-tax subtotal.</p>
-      </div>
+      <ExtrasEditor tab={tab} calc={calc} onSaveExtras={onSaveExtras} />
 
       <div className="card mt-3 divide-y divide-slate-100">
         {calc.perParticipant.length === 0 && (

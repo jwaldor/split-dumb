@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "splitdumb": {
+      "type": "http",
+      "url": "https://splitdumb-production.up.railway.app/mcp"
+    }
+  }
+}

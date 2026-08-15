@@ -71,6 +71,19 @@ export default function Home() {
         {error && <p className="mt-2 text-center text-sm text-red-600">{error}</p>}
       </div>
 
+      <button
+        onClick={() => navigate('/plugin')}
+        className="card mt-3 flex w-full items-center justify-between gap-3 p-4 text-left hover:bg-slate-50"
+      >
+        <span className="min-w-0">
+          <span className="block font-semibold">Use it from Claude or ChatGPT</span>
+          <span className="block text-xs text-slate-400">
+            Send your assistant the receipt — it builds the tab for you
+          </span>
+        </span>
+        <span className="shrink-0 text-sm text-venmo">→</span>
+      </button>
+
       {recents.length > 0 && (
         <div className="mt-8">
           <h2 className="text-sm font-semibold text-slate-500">Tabs you started</h2>
