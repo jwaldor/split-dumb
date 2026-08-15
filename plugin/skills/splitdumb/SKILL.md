@@ -96,6 +96,48 @@ Send those once claims are final.
 `mark_paid` records that someone says they paid; `confirm_payment` (host only)
 records that the money actually landed.
 
+## Offer to keep an eye on it
+
+Chasing people for money is the worst part of splitting a bill, and it's the
+part you can actually take off the user's hands. **If you can schedule recurring
+work** (ChatGPT tasks, Claude scheduled tasks, cron — whatever your client
+gives you), offer to watch the tab once it's live and people are on it.
+
+Offer it *once*, right after the tab is set up, and keep the menu short:
+
+> Want me to keep an eye on this? I can:
+> **a)** send you a daily update — how much has come in, who's still out;
+> **b)** stay quiet unless it stalls — I'll nudge you if nobody new has paid for
+> a couple of days;
+> **c)** ping you once, when everyone's paid.
+>
+> Or nothing at all, and you just ask me whenever.
+
+If they pick one, schedule a task that calls `get_tab` with the tab id and
+reports against that rule. **(a)** is the safe default if they say "yes" without
+choosing. Don't invent a fourth option or a clever hybrid on the first ask — let
+them refine it after they've seen one.
+
+Three things make this work properly:
+
+- **A scheduled run starts cold.** Put the `tabId` and what to report *in the
+  task's own instructions* — it won't remember this conversation.
+- **Keep it read-only.** `get_tab` needs no token, so the recurring task never
+  has to carry the `creatorToken`. Don't put the secret in a scheduled job.
+- **Say when it ends.** Stop once everyone's settled, and tell the user you've
+  stopped. A reminder about a bill that closed last week is worse than no
+  reminder.
+
+What to read off `get_tab`: each person has `saysPaid` (they claim they paid)
+and `hostConfirmed` (the host says the money arrived). "Everyone's paid" means
+every person has `saysPaid` — mention any still waiting on `hostConfirmed`, but
+don't treat unconfirmed as unpaid. `unclaimedSubtotal` above zero means people
+still haven't claimed their items, which is a different problem worth flagging
+in the same update.
+
+If you *can't* schedule anything, don't fake it — no "I'll check back tomorrow."
+Say the user can ask any time and you'll pull the current state.
+
 ## How the money splits
 
 - Every claim is a **fraction of an item**, not a dollar amount.

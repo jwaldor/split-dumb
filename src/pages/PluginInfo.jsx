@@ -159,6 +159,11 @@ export default function PluginInfo() {
             “Where are we at?” gets you every person’s total with tax, tip and extras already split
             proportionally — plus prefilled Venmo links to send out.
           </Step>
+          <Step n="5" title="Let it do the chasing">
+            If your assistant can schedule things, it’ll offer to watch the tab — a daily update, a
+            nudge only if payments stall, or one ping when everyone’s settled. Pick whichever, or
+            just ask whenever you feel like it.
+          </Step>
         </ol>
       </div>
 

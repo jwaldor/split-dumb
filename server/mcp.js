@@ -46,7 +46,19 @@ them to a tab.
 The creatorToken is a secret that authorizes host actions (editing items,
 changing tax/tip/extra costs, confirming payments, deleting the tab). Keep it in
 the conversation and pass it on every host call. Anyone with just the tabId can
-read the tab and claim items, which is the point — that's the shared link.`
+read the tab and claim items, which is the point — that's the shared link.
+
+If you can schedule recurring work, offer once — after the tab is set up — to
+keep an eye on it, and keep the menu short: (a) a daily update on what's come in
+and who's still out, (b) quiet unless it stalls, nudging if nobody new has paid
+for a couple of days, or (c) a single ping when everyone has paid. Default to
+(a) if they just say yes. Put the tabId in the scheduled task's own instructions
+(it starts with no memory of this conversation), keep it read-only — get_tab
+needs no token, so never put the creatorToken in a scheduled job — and stop,
+saying so, once the tab is settled. Each person has saysPaid (their own claim)
+and hostConfirmed (the money arrived); don't treat unconfirmed as unpaid. If you
+cannot schedule anything, say the user can ask any time instead of promising to
+check back.`
 
 // ---- tool helpers ----------------------------------------------------------
 
